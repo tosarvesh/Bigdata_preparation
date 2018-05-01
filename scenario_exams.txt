@@ -1,0 +1,412 @@
+mysql> use customers;
+mysql> desc customers;
++-------------------+--------------+------+-----+---------+----------------+
+| Field             | Type         | Null | Key | Default | Extra          |
++-------------------+--------------+------+-----+---------+----------------+
+| customer_id       | int(11)      | NO   | PRI | NULL    | auto_increment |
+| customer_fname    | varchar(45)  | NO   |     | NULL    |                |
+| customer_lname    | varchar(45)  | NO   |     | NULL    |                |
+| customer_email    | varchar(45)  | NO   |     | NULL    |                |
+| customer_password | varchar(45)  | NO   |     | NULL    |                |
+| customer_street   | varchar(255) | NO   |     | NULL    |                |
+| customer_city     | varchar(45)  | NO   |     | NULL    |                |
+| customer_state    | varchar(45)  | NO   |     | NULL    |                |
+| customer_zipcode  | varchar(45)  | NO   |     | NULL    |                |
++-------------------+--------------+------+-----+---------+----------------+
+9 rows in set (0.00 sec)
+
+mysql> desc orders
+    -> ;
++-------------------+-------------+------+-----+---------+----------------+
+| Field             | Type        | Null | Key | Default | Extra          |
++-------------------+-------------+------+-----+---------+----------------+
+| order_id          | int(11)     | NO   | PRI | NULL    | auto_increment |
+| order_date        | datetime    | NO   |     | NULL    |                |
+| order_customer_id | int(11)     | NO   |     | NULL    |                |
+| order_status      | varchar(45) | NO   |     | NULL    |                |
++-------------------+-------------+------+-----+---------+----------------+
+4 rows in set (0.00 sec)
+
+mysql> desc order_items;
++--------------------------+------------+------+-----+---------+----------------+
+| Field                    | Type       | Null | Key | Default | Extra          |
++--------------------------+------------+------+-----+---------+----------------+
+| order_item_id            | int(11)    | NO   | PRI | NULL    | auto_increment |
+| order_item_order_id      | int(11)    | NO   |     | NULL    |                |
+| order_item_product_id    | int(11)    | NO   |     | NULL    |                |
+| order_item_quantity      | tinyint(4) | NO   |     | NULL    |                |
+| order_item_subtotal      | float      | NO   |     | NULL    |                |
+| order_item_product_price | float      | NO   |     | NULL    |                |
++--------------------------+------------+------+-----+---------+----------------+
+
+
+find total number of orders placed by custome rand his id,name(concatenated fname and lname) and save as avro and textformat in destination directory
+/user/training/cust_ord/avro
+
+/user/training/cust_ord/text
+
+/user/training/cust_ord/sequence
+
+
+import orders and customers table in directory /user/training/exam_practice_april/ as parquet with delimeter "," and lines-terminated by "\n"
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --table customers --target-dir /user/training/exam_practice_april/customers  -m 1 --fields-terminated-by "," --lines-terminated-by "\n" --delete-target-dir --as-parquetfile
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --table orders --target-dir /user/training/exam_practice_april/orders  -m 1 --fields-terminated-by "," --lines-terminated-by "\n" --delete-target-dir --as-parquetfile
+
+
+var orders_df=sqlContext.read.parquet("/user/training/exam_practice_april/orders")
+var customers_df=sqlContext.read.parquet("/user/training/exam_practice_april/customers")
+
+
+var ord_join=orders_df.join(customers_df,orders_df("order_customer_id")===customers_df("customer_id"))
+
+ord_join.registerTempTable("ord_cust")
+
+var sqlresult=sqlContext.sql("select customer_id,customer_fname,customer_lname,count(distinct(order_id)) as total_order from ord_cust group by customer_id,customer_fname,customer_lname")
+
+sqlresult.show
+
+import com.databricks.spark.avro._
+sqlresult.write.avro("/user/training/cust_ord/avro")
+
+sqlresult.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/cust_ord/text")
+
+sqlresult.rdd.map(x=>(x(0).toString,x.mkString("\t"))).saveAsSequenceFile("/user/training/cust_ord/sequence")
+
+--read sequence file from the step above and convert to jsonfile as snappycompressed at location /user/training/cust_ord/json
+var cust_ord=sc.sequenceFile("/user/training/cust_ord/sequence",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text])
+var cust_df=cust_ord.map(x=>{var d=x._2.toString.split("\t");(d(0),d(1),d(2),d(3))}).toDF("customer_id","customer_fname","customer_lname","total_order")
+cust_df.show
+
+sqlContext.setConf("spark.sql.json.compression.codec","snappy")
+cust_df.write.json("/user/training/cust_ord/json")
+##############################################################concatenate#######################
+var orders_df=sqlContext.read.parquet("/user/training/exam_practice_april/orders")
+var customers_df=sqlContext.read.parquet("/user/training/exam_practice_april/customers")
+
+var ord_join=orders_df.join(customers_df,orders_df("order_customer_id")===customers_df("customer_id"))
+
+ord_join.registerTempTable("ord_cust")
+
+var sqlresult=sqlContext.sql("select customer_id,concat(concat(customer_fname,' '),customer_lname) customer_name,cast(count(distinct(order_id)) as int )as total_order from ord_cust group by customer_id,customer_fname,customer_lname")
+
+sqlresult.show
+
+sqlresult.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/cust_ord_count_info/text")
+
+sqlresult.write.avro("/user/training/cust_ord_count_info/avro")
+
+export the result to mysql table export_customer in table customer.cust_order_count
+
+
+create database customers;
+use  customers;
+drop table cust_order_count;
+create table cust_order_count(customer_id int,total_order int,customer_name varchar(100));
+
+
+sqoop export --connect jdbc:mysql://localhost/customers --username root --table cust_order_count --input-fields-terminated-by "\t" --columns "customer_id,customer_name,total_order" -m 1 --export-dir /user/training/cust_ord_count_info/text
+
+###export from avro file####3
+sqoop export --connect jdbc:mysql://localhost/customers --username root --table cust_order_count --input-fields-terminated-by "\t" --columns "customer_id,customer_name,total_order" -m 1 --export-dir /user/training/cust_ord_count_info/avro
+
+
+
+
+###import the table cust_order_count into hive database customer#####
+---
+>hive>
+create database customer;
+use customer;
+
+
+sqoop import --connect jdbc:mysql://localhost/customers --username root --table cust_order_count --hive-import --create-hive-table --hive-database customer -m 1 --hive-overwrite --delete-target-dir
+
+
+
+
+read the cust_order_count table in hive metastore customer and save the customer name and customer and total order count and save in ord and avro format.
+at destination /user/training/cust_meta/orc,/user/training/cust_meta/avro who name ends with Smith
+
+
+sqlContext.sql("use customer")
+var sqlresult=sqlContext.sql("select customer_id,customer_name,total_order from cust_order_count where customer_name like '%Smith'")
+sqlresult.show
+sqlContext.setConf("spark.sql.orc.compression.codec","gzip")
+sqlresult.write.orc("/user/training/cust_meta/orc")
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+import com.databricks.spark.avro._
+sqlresult.write.avro("/user/training/cust_meta/avro")
+
+save as csv file.
+
+sqlresult.map(x=>x.mkString(",")).saveAsTextFile("/user/training/cust_meta/csv")
+
+
+
+save as csv in snappy compressed format.
+
+
+sqlresult.map(x=>x.mkString(",")).saveAsTextFile("/user/training/cust_meta/csv/snappy",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+sqlresult.map(x=>x.mkString(",")).saveAsTextFile("/user/training/cust_meta/csv/gzip",classOf[org.apache.hadoop.io.compress.GzipCodec])
+
+
+
+
+--Find top five customer based on number of orders;
+
+var orders_df=sqlContext.read.parquet("/user/training/exam_practice_april/orders")
+var customers_df=sqlContext.read.parquet("/user/training/exam_practice_april/customers")
+
+var ord_join=orders_df.join(customers_df,orders_df("order_customer_id")===customers_df("customer_id"))
+
+ord_join.registerTempTable("ord_cust")
+
+var sqlresult=sqlContext.sql("select customer_id,concat(concat(customer_fname,' '),customer_lname) customer_name,cast(count(distinct(order_id)) as int )as total_order,dense_rank() over( order by count(order_id) desc ) as dense_rank,rank() over( order by count(order_id) desc ) as rank from ord_cust group by customer_id,concat(concat(customer_fname,' '),customer_lname) order  by rank,dense_rank  limit 5").show
+
+sqlresult.show
+
+##########create external cust_order_count_ext point to the hive table location /user/hive/warehouse/customer.db/cust_order_count/ ,which we used abive while imported the records from mysql to hive###################
+
+create external table cust_order_count_ext(
+customer_id int,
+total_order int,
+customer_name string)
+row format delimited fields terminated by '\001'
+location '/user/hive/warehouse/customer.db/cust_order_count/';
+
+
+###########create cust_order_count_orc table and load data#########
+create  table cust_order_count_orc(
+customer_id int,
+total_order int,
+customer_name string)
+stored as orc;
+
+insert overwrite table cust_order_count_orc select * from cust_order_count_ext;
+
+export the data of metastore table customer.cust_order_count_orc into mysql database.customers and table customers.customer_export and export only
+customer_id and customer_name
+
+
+use  customers;
+drop table customer_export;
+create table customer_export(customer_name varchar(100),customer_id int,total_order int);
+
+sqoop eval --connect jdbc:mysql://localhost/customers --username root --query "drop table customer_export"
+sqoop eval --connect jdbc:mysql://localhost/customers --username root --query "create table customer_export(customer_name varchar(100),customer_id int,total_order int);"
+
+sqoop export --connect jdbc:mysql://localhost/customers --username root --table customer_export --export-dir /user/hive/warehouse/customer.db/cust_order_count --columns "customer_id,total_order,customer_name" --input-fields-terminated-by "\001" -m 1
+
+sqoop eval --connect jdbc:mysql://localhost/customers --username root --query "select * from  customer_export limit 5"
+
+
+check hive database from terminal using hive -e
+
+hive -e "use customer;show tables;select * from cust_order_count_ext limit 5;"
+
+
+#######check the size of data directory to set num executors and executor-memory
+hdfs dfs -du  -h -s /user/training/data/retail_db/orders
+
+
+by default execcutor-memory is 1gb and num-executors are 2...
+
+
+
+
+############import customers data where lastname is like Smith##########
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root  --table customers --target-dir /user/cert/problem1/soultion --as-textfile --fields-terminated-by "," --where "customer_lname like '%Smith' " --delete-target-dir
+
+#####save data back to hive table###########
+
+var orders_df=sqlContext.read.parquet("/user/training/exam_practice_april/orders")
+var customers_df=sqlContext.read.parquet("/user/training/exam_practice_april/customers")
+
+var ord_join=orders_df.join(customers_df,orders_df("order_customer_id")===customers_df("customer_id"))
+
+ord_join.registerTempTable("ord_cust")
+
+var sqlresult=sqlContext.sql("select customer_id,concat(concat(customer_fname,' '),customer_lname) customer_name,cast(count(distinct(order_id)) as int )as total_order,dense_rank() over( order by count(order_id) desc ) as dense_rank,rank() over( order by count(order_id) desc ) as rank from ord_cust group by customer_id,concat(concat(customer_fname,' '),customer_lname) order  by rank,dense_rank  limit 5").show
+
+sqlresult.show
+
+sqlresult.saveAsTable("cust_order_count_save")
+
+
+#######find inactive customers and save in diffrent format#############
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2),d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+import scala.io.Source
+var customers_raw=Source.fromFile("/home/training/data/retail_db/customers/part-00000").getLines.toList
+var customers_rdd=sc.parallelize(customers_raw)
+var customers_df=customers_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2),d(5),d(6))}).toDF("customer_id","customer_fname","customer_lname","customer_street","customer_city")
+var ord_cust=customers_df.join(orders_df,customers_df("customer_id")=== orders_df("order_customer_id"),"left")
+ord_cust.registerTempTable("ord_cust_temp")
+var sqlresult=sqlContext.sql("select customer_id,customer_fname,customer_lname,customer_street,customer_city  from ord_cust_temp where order_id is null")
+sqlresult.show
+sqlresult.write.avro("/user/training/exam_practice/cca175/inactive_customers/avro")
+
+sqlresult.rdd.map(x=>x.mkString(", ")).saveAsTextFile("/user/training/exam_practice/cca175/inactive_customers/text")
+
+sqlresult.rdd.map(x=>x.mkString(", ")).saveAsTextFile("/user/training/exam_practice/cca175/inactive_customers/compressed_text_gzip",classOf[org.apache.hadoop.io.compress.GzipCodec])
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/exam_practice/cca175/inactive_customers/parquet")
+
+
+
+
+Scenario 4:
+
+a) read data employee and department data avilable at /user/training/practice_data/employee/ and  /user/training/practice_data/department/ ,
+which is tab delimited and get the department_id and sum of salary of that department.
+
+var emp_rdd=sc.textFile("/user/training/practice_data/employee/")
+var emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(4),d(9))}).toDF("eid","fname","lname","salary","e_did")
+var dept_rdd=sc.textFile("/user/training/practice_data/department/")
+var dept_df=dept_rdd.map(x=>{var d=x.split("\t");(d(0),d(1))}).toDF("d_did","deptname")
+var join_df=emp_df.join(dept_df,emp_df("e_did")===dept_df("d_did"))
+join_df.registerTempTable("emp_dept")
+var sqlresult=sqlContext.sql("select eid,fname,lname,salary,deptname,d_did from emp_dept")
+sqlresult.show
+sqlresult.write.orc("/user/training/emp_dept/orc/");
+sqlresult.write.json("/user/training/emp_dept/json/");
+
+
+
+problem1:
+Data set URL 215
+Choose language of your choice Python or Scala
+Data is available in HDFS file system under /public/crime/csv
+You can check properties of files using hadoop fs -ls -h /public/crime/csv
+Structure of data (ID,Case Number,Date,Block,IUCR,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,FBI Code,X Coordinate,Y Coordinate,Year,Updated On,Latitude,Longitude,Location)
+File format - text file
+Delimiter - “,”
+Get monthly count of primary crime type, sorted by month in ascending and number of crimes per type in descending order
+Store the result in HDFS path /user/<YOUR_USER_ID>/solutions/solution01/crimes_by_type_by_month
+Output File Format: TEXT
+Output Columns: Month in YYYYMM format, crime count, crime type
+Output Delimiter: \t (tab delimited)
+Output Compression: gzip
+
+
+val crimeData = sc.textFile("/user/training/CRIME_DATA")
+var header=crimeData.first
+var crime=crimeData.filter(crime=>crime!=header)
+var crime_df=crime.map(x=>{var d=x.split(",");(d(5),d(2))}).toDF("crime_type","crime_date")
+crime_df.registerTempTable("crimes")
+var sqlresult_crime_month=sqlContext.sql(" select count(1) crime_count,crime_type,cast(concat(substr(crime_date,7,4) ,substr(crime_date,0,2)) as Int) crime_month from  crimes group by  crime_type,cast(concat(substr(crime_date,7,4) ,substr(crime_date,0,2)) as Int) order by crime_month, crime_count desc")
+sqlresult_crime_month.show
+sqlresult_crime_month.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/solutions/solution01/crimes_by_type_by_month",classOf[org.apache.hadoop.io.compress.GzipCodec])
+
+
+
+
+
+
+
+
+
+#################################
+
+
+
+
+
+hive> desc orders;
+OK
+order_id            	int                 	                    
+order_date          	string              	                    
+order_customer_id   	int                 	                    
+order_status        	string              	                    
+Time taken: 1.456 seconds, Fetched: 4 row(s)
+hive> desc order_items;
+OK
+order_item_id       	int                 	                    
+order_item_order_id 	int                 	                    
+order_item_product_id	int                 	                    
+order_item_quantity 	int                 	                    
+order_item_subtotal 	float               	                    
+order_item_product_price	float               	                    
+Time taken: 0.681 seconds, Fetched: 6 row(s)
+hive> desc customers;
+OK
+customer_id         	int                 	                    
+customer_fname      	varchar(45)         	                    
+customer_lname      	varchar(45)         	                    
+customer_email      	varchar(45)         	                    
+customer_password   	varchar(45)         	                    
+customer_street     	varchar(255)        	                    
+customer_city       	varchar(45)         	                    
+customer_state      	varchar(45)         	                    
+customer_zipcode    	varchar(45)    
+
+
+Duration: 20 to 30 minutes
+
+Tables should be in hive database - <YOUR_USER_ID>_retail_db_txt
+orders
+order_items
+customers
+Time to create database and tables need not be counted. Make sure to go back to Spark SQL module and create tables and load data
+Get details of top 5 customers by revenue for each month
+We need to get all the details of the customer along with month and revenue per month
+Data need to be sorted by month in ascending order and revenue per month in descending order
+Create table top5_customers_per_month in <YOUR_USER_ID>_retail_db_txt
+Insert the output into the newly created table
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+
+var customers_rdd=sc.textFile("/user/training/data/retail_db/customers")
+
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toString,d(2).toInt,d(3).toString)}).toDF("order_id","order_date","order_customer_id","order_status")
+
+var order_items_df=order_items_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toString,d(4).toFloat,d(5).toFloat)}).toDF("order_item_id","order_item_order_id","order_item_subtotal","order_item_product_price")
+
+var customers_df=customers_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toString,d(2).toString,d(3).toString,d(4).toString,d(5).toString,d(6).toString,d(7).toString,d(8).toString)}).toDF("customer_id","customer_fname","customer_lname","customer_email","customer_password","customer_street","customer_city","customer_state","customer_zipcode")
+
+
+orders_df.registerTempTable("orders")
+order_items_df.registerTempTable("order_items")
+customers_df.registerTempTable("customers")
+
+var sqlresult_top5_cust = sqlContext.sql("select * from(select q.customer_id,q.customer_fname,q.customer_lname,q.customer_email,q.customer_password,q.customer_street,q.customer_city,q.customer_state,q.customer_zipcode, q.order_month, q.total_revenue,dense_rank() over (partition by q.order_month order by q.total_revenue desc ) rank from (select c.customer_id,c.customer_fname,c.customer_lname,c.customer_email,c.customer_password,c.customer_street,c.customer_city,c.customer_state,c.customer_zipcode,substr(o.order_date,1,7) as order_month, sum(order_item_subtotal)  total_revenue  from orders o join order_items oi on o.order_id=oi.order_item_order_id join customers c on o.order_customer_id=c.customer_id    group by c.customer_id,c.customer_fname,c.customer_lname,c.customer_email,c.customer_password,c.customer_street,c.customer_city,c.customer_state,c.customer_zipcode,substr(o.order_date,1,7) )q) r where rank<=5 order by month,total_revenue desc")
+
+sqlresult_top5_cust.saveAsTable("problem21.top_5_customer")
+
+
+####using hive database##############
+sqlContext.sql("use retail_db")
+var sqlresult_top5_cust = sqlContext.sql("select * from(select q.customer_id,q.customer_fname,q.customer_lname,q.customer_email,q.customer_password,q.customer_street,q.customer_city,q.customer_state,q.customer_zipcode, q.order_month, q.total_revenue,dense_rank() over (partition by q.order_month order by q.total_revenue desc ) rank from (select c.customer_id,c.customer_fname,c.customer_lname,c.customer_email,c.customer_password,c.customer_street,c.customer_city,c.customer_state,c.customer_zipcode,substr(o.order_date,1,7) as order_month, sum(order_item_subtotal)  total_revenue  from orders o join order_items oi on o.order_id=oi.order_item_order_id join customers c on o.order_customer_id=c.customer_id    group by c.customer_id,c.customer_fname,c.customer_lname,c.customer_email,c.customer_password,c.customer_street,c.customer_city,c.customer_state,c.customer_zipcode,substr(o.order_date,1,7) )q) r where rank<=5 ")
+
+problem1:
+Data set URL 215
+Choose language of your choice Python or Scala
+Data is available in HDFS file system under /public/crime/csv
+You can check properties of files using hadoop fs -ls -h /public/crime/csv
+Structure of data (ID,Case Number,Date,Block,IUCR,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,FBI Code,X Coordinate,Y Coordinate,Year,Updated On,Latitude,Longitude,Location)
+File format - text file
+Delimiter - “,”
+Get monthly count of primary crime type, sorted by month in ascending and number of crimes per type in descending order
+Store the result in HDFS path /user/<YOUR_USER_ID>/solutions/solution01/crimes_by_type_by_month
+Output File Format: TEXT
+Output Columns: Month in YYYYMM format, crime count, crime type
+Output Delimiter: \t (tab delimited)
+Output Compression: gzip
+
+
+val crimeData = sc.textFile("/user/training/CRIME_DATA")
+var header=crimeData.first
+var crime=crimeData.filter(crime=>crime!=header)
+var crime_df=crime.map(x=>{var d=x.split(",");(d(5),d(2))}).toDF("crime_type","crime_date")
+crime_df.registerTempTable("crimes")
+var sqlresult_crime_month=sqlContext.sql(" select count(1) crime_count,crime_type,cast(concat(substr(crime_date,7,4) ,substr(crime_date,0,2)) as Int) crime_month from  crimes group by  crime_type,cast(concat(substr(crime_date,7,4) ,substr(crime_date,0,2)) as Int) order by crime_month, crime_count desc")
+sqlresult_crime_month.show
+sqlresult_crime_month.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/solutions/solution01/crimes_by_type_by_month",classOf[org.apache.hadoop.io.compress.GzipCodec])
+
+

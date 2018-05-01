@@ -1,0 +1,167 @@
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --password root --table orders --target-dir "/user/training/path" \
+--as-avrodatafile -m 1 --fields-terminated-by "\t" --lines-terminated-by "\n"  --split-by order_id --where "order_id<10" \
+--boundary-query "select min(order_id),max(order_id) where order_id<10" --direct --compress \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec
+
+sqoop import-all ----connect jdbc:mysql://localhost/retail_database --username root --password root warehouse-dir "/user/training/path" \
+--as-textfile -m 1 --fields-terminated-by "\t" --lines-terminated-by "\n"  
+
+
+sqoop import-all-tables --connect jdbc:mysql://localhost/employees_info --username root \
+--warehouse-dir /user/hive/warehouse/solution.db/ -m 1 --hive-database solution --create-hive-table --hive-import --hive-overwrite
+
+
+sqoop export --connect jdbc:mysql://localhost/retail_database --username root --password root --export-dir "/user/hive/warehouse/retail_db.db/orders" 
+--input-fields-terminated-by "\001" --table orders --columns "order_id,order_date,order_customer_id,order_status" --update-mode allowinsert --update-key order_id
+
+OR
+--update-mode updateonly
+
+
+sqoop export --connect jdbc:mysql://localhost/retail_db --username root --table orders  --m 1 --export-dir data/retail_db/orders
+
+
+sqoop job --create first_sqoop_job \
+-- import \
+ --connect jdbc:mysql://localhost/retail_db \
+ --username root \
+ --table products_replica \
+ --target-dir /user/training/problem5/products-incremental \
+--check-column product_id \
+--incremental append \
+ --last-value 0;
+
+
+--update-mode allowinsert
+--update-mode updateonly
+--update-key empid
+
+
+--incremental append
+--check-column empid
+--last-value 0
+
+
+--incremental lastmodified
+--check-column update_time
+--last-value '10-kan-2018'
+
+sqoop job --exec job_name
+
+##########spark###################
+
+emp_rdd.map(x=>{var d=x.split("\t");(d(0)+"\t"+d(1)+"\t"+d(2)+"\t"+d(3)+"\t"+d(4)+"\t"+d(5)+"\t"+d(6))}).saveAsTextFile("/user/training/testing1")
+
+####read diffrent file format###########3
+########read avro,json,orc,parquet
+
+sqlContext.read.avro()
+sqlContext.read.json()
+sqlContext.read.orc()
+sqlContext.read.parquet()
+###
+var ord_df=sqlContext.read.avro("path")
+ord_df.registerTempTable("order_temp")
+var sqlresult=sqlContext.sql("select * from order_temp");
+
+
+########write diffrent format########
+sqlresult.write.avro()
+sqlresult.write.orc()
+sqlresult.write.parquet()
+sqlresult.write.json()
+ex:sqlresult.write.parquet("/user/training/order/parquet")
+
+#########write sequence file################
+seq_df.map(x=>(x(0).toString,x(0)+"\t"+x(1))).saveAsSequenceFile("/user/training/seq_test_data1")
+sqlresult.rdd.map(x=>(x(0).toString,x.mkString("\t"))).saveAsSequenceFile("/user/training/scenarios/scenario1/sequences/customer_data");
+
+
+
+########compress###########
+
+sqlContext.setConf("spark.orc.compression.codec")
+ex:sqlresult.write.avro("/user/training/order/compress/avro")
+
+####save in textfile########
+
+sqlresult.rdd.map(x=>x(0)+"\t"+x(1)).saveAsTextFile("/user/training/orders/text",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+#######read textfile#######
+var ord_rdd=sc.textFile("/user/training/orders")
+var ord_df=ord_rdd.map(x=>{var d=x.split(",");(d(0),d(1))}).toDF("order_id","order_date")
+ord_df.registerTempTable("order_temp")
+var sqlresult=sqlContext.sql("select * from order_temp");
+ex:sqlresult.write.avro("/user/training/order/compress/avro")
+sqlresult.rdd.map(x=>x(0)+"\t"+x(1)).saveAsTextFile("/user/training/orders/text",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+
+
+#######read file from local file system#######
+
+import scala.io.Source
+var ord_raw=Source.fromFile("/home/training/orders").getLines.toList
+var ord_rdd=sc.parallelize(ord_raw)
+var ord_df=ord_rdd.map(x=>{var d=x.split(",");(d(0),d(1))}).toDF("order_id","order_date")
+ord_df.registerTempTable("order_temp")
+var sqlresult=sqlContext.sql("select * from order_temp");
+ex:sqlresult.write.avro("/user/training/order/compress/avro")
+sqlresult.rdd.map(x=>x(0)+"\t"+x(1)).saveAsTextFile("/user/training/orders/text",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+##########read sequence file##########
+scala> var seq_rdd=sc.sequenceFile("/user/training/solution10/uncompressed/sequence",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text])
+seq_rdd: org.apache.spark.rdd.RDD[(org.apache.hadoop.io.Text, org.apache.hadoop.io.Text)] = /user/training/solution10/uncompressed/sequence HadoopRDD[2] at sequenceFile at <console>:27
+
+scala> seq_rdd.first
+res1: (org.apache.hadoop.io.Text, org.apache.hadoop.io.Text) = (IT,IT   3281.0) 
+
+scala> var seq_df=seq_rdd.map(x=>{var d=x._2.toString.split("\t");(d(0),d(1))}).toDF("dept_name","avgsal")
+seq_df: org.apache.spark.sql.DataFrame = [dept_name: string, avgsal: string]
+
+scala> seq_df.show
++---------+------+                                                              
+|dept_name|avgsal|
++---------+------+
+|       IT|3281.0|
+|    Sales|3600.0|
+| Accounts|8500.0|
++---------+------+
+
+
+
+
+##########use metastore#######
+var hc=new org.apache.spark.sql.hive.HiveContext(sc)
+hc.sql("use retail_db")
+var sqlresult=hc.sql("select * from orders")
+sqlresult.write.json("path")
+
+you can use sqlContext.sql as well
+
+######Hive
+create table order_part(
+     order_id int,
+     order_date string,
+     order_customer_id int
+    )partitioned by (order_status string);
+
+insert overwrite table order_part partition(order_status) select * from orders;
+
+insert into table  orders select * from sarvesh_retail_db_txt.orders;                            
+
+create external table order_ext(
+     order_id int,
+     order_date string,
+     order_customer_id int
+    ) row format delimited fields terminated by '\001'
+    location"/user/hive/warehouse/retail_db.db/orders";
+    
+    
+    
+###########filter data frame########################
+
+var seq_data=sc.sequenceFile("/user/training/solution10/uncompressed/sequence",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text])
+var seq_df=seq_data.map(x=>{var d=x._2.toString.split("\t");(d(0),d(1))}).toDF("DEPT_name","total_sal")
+var seq_f=seq_df.filter(seq_df("DEPT_name")==="IT").show
+
+

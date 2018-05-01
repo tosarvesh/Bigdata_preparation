@@ -1,0 +1,250 @@
+spark-shell --master local[2] --num-executors 2 --executor-memory 512
+
+spark-shell --master yarn --num-executors 2 --executor-memory 512
+
+*********use sparksql and write as textfile***************
+scala> sqlContext.sql("use retail_db")
+res11: org.apache.spark.sql.DataFrame = [result: string]
+
+scala> var order_count=sqlContext.sql("select count(*),order_status from orders group by order_status")
+order_count: org.apache.spark.sql.DataFrame = [_c0: bigint, order_status: string]
+
+---need to convert dataframe to rdd if you want to write as textfile can not use directly to write as textfile----
+
+scala> var order_count_map=order_count.map(x=>x(0)+"\t"+x(1))
+order_count_map: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[30] at map at <console>:27
+
+scala> order_count_map.saveAsTextFile("/user/training/sarvesh_sparksql_practice/order_count")
+                                                                                
+scala> order_count_map.coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/order_count")
+
+
+************to save into avero or json or parquet or orc we can use dataframe directly and write method *************
+
+    ---need to import avro api
+scala> import com.databricks.spark.avro._
+import com.databricks.spark.avro._
+scala> order_count.coalesce(1).write.avro("/user/training/sarvesh_sparksql_practice/avro/order_count")
+
+scala> order_count.coalesce(1).write.json("/user/training/sarvesh_sparksql_practice/json/order_count")
+scala> order_count.coalesce(1).write.orc("/user/training/sarvesh_sparksql_practice/orc/order_count")
+
+
+---For parquet need to defined compression else it was using by defalut gzip compression----
+scala> sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+
+scala> order_count.coalesce(1).write.parquet("/user/training/sarvesh_sparksql_practice/parquet/order_count")
+
+
+***********read file and convert to dataframe and perform analysis*******************
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+
+
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1),d(2).toInt,d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+
+orders_df.registerTempTable("orders")
+
+sqlContext.sql("select * from orders limit 5").show
+
+var orders_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+
+var order_items_df=order_items_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat)}).toDF("order_item_id","order_item_order_id","order_item_product_id","order_item_quantity","order_item_subtotal","order_item_product_price")
+
+order_items_df.registerTempTable("order_items")
+
+sqlContext.sql("select * from order_items limit 5").show
+
+---we can use case class to convert to dataframe -------------
+case class Product(product_id :Int,
+product_category_id :Int,
+product_name :String,
+product_description :String,
+product_price :Float,
+product_image :String);     
+
+---this row has product_price null so need filter
+--hive (retail_db)> select * from products where product_price is null;
+--685	31	"TaylorMade SLDR Irons - (Steel) 4-PW	 AW"	NULL	899.99
+
+
+var products_rdd=sc.textFile("/user/training/data/retail_db/products")
+var products=products_rdd.filter(p => p.split(",")(4)!="").map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toString,d(3).toString,d(4).toFloat,d(5).toString)})
+var products_df=products.map(x=>Product(x._1,x._2,x._3,x._4,x._5,x._6)).toDF()
+
+products_df.registerTempTable("products")
+
+sqlContext.sql("select * from products limit 5").show
+
+--------get daily revenue per product using data frame and sparksql out put columns are order_date, product_name, daily_revenue_per_product and sort by order_date asc, daily_revenue_per_product desc-------------
+
+
+var daily_revenue_df=sqlContext.sql("select o.order_date,p.product_Name,round(sum(oi.order_item_subtotal),2) as daily_revenue_per_product " +
+"from orders o join order_items oi "+
+"on o.order_id=oi.order_item_order_id "+
+"join products p "+
+"on oi.order_item_product_id=p.product_ID "+
+"where order_status in ('CLOSED','COMPLETE') "+
+"group by o.order_date,p.product_Name "+
+ "ORDER by  o.order_date,daily_revenue_per_product desc ")
+ 
+daily_revenue_df.show
+ 
+ *************savefile in diffrent format**********************
+ --parquet
+  sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+ daily_revenue_df.coalesce(1).write.parquet("/user/training/sarvesh_sparksql_practice/daily_revenue/parquet")
+ --orc
+ daily_revenue_df.coalesce(1).write.orc("/user/training/sarvesh_sparksql_practice/daily_revenue/orc")
+ --json
+ 
+ daily_revenue_df.coalesce(1).write.json("/user/training/sarvesh_sparksql_practice/daily_revenue/json")
+ 
+ or
+ 
+ daily_revenue_df.toJSON.coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/json_txt")
+ 
+ 
+ --avro
+ import com.databricks.spark.avro._
+ daily_revenue_df.coalesce(1).write.avro("/user/training/sarvesh_sparksql_practice/daily_revenue/avro")
+ 
+ --Save as Text File need to convert into rdd
+ 
+ var daily_revenue_rdd=daily_revenue_df.map(x=>x(0)+"\t"+x(1)+"\t"+x(2))
+ daily_revenue_rdd.coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/text")
+ 
+ 
+ --sequencefile
+ 
+ var daily_revenueseq_rdd=daily_revenue_df.map(x=>(x(0).toString,x(0)+"\t"+x(1)+"\t"+x(2)))
+ daily_revenueseq_rdd.coalesce(1).saveAsSequenceFile("/user/training/sarvesh_sparksql_practice/daily_revenue/sequence")
+ 
+ 
+ 
+ *********************compression**********************************
+ 1)Snappy
+  --parquetsnappy
+  
+ sqlContext.setConf("spark.sql.parquet.compression.codec","snappy")
+ daily_revenue_df.coalesce(1).write.parquet("/user/training/sarvesh_sparksql_practice/daily_revenue/parquetsnappy")
+ 
+ --orcsnappy
+ sqlContext.setConf("spark.sql.orc.compression.codec","snappy")
+ daily_revenue_df.coalesce(1).write.orc("/user/training/sarvesh_sparksql_practice/daily_revenue/orcsnappy")
+ 
+ --jsonsnappy
+ sqlContext.setConf("spark.sql.json.compression.codec","snappy")
+ daily_revenue_df.coalesce(1).write.json("/user/training/sarvesh_sparksql_practice/daily_revenue/jsonsnappy")
+ 
+ --avrosnappy
+  import com.databricks.spark.avro._
+ sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+ daily_revenue_df.coalesce(1).write.avro("/user/training/sarvesh_sparksql_practice/daily_revenue/avrosnappy")
+ 
+--textsnappy
+ daily_revenue_rdd.coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/textsnappy",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+--sequencesnappy
+ var daily_revenueseq_rdd=daily_revenue_df.map(x=>(x(0).toString,x(0)+"\t"+x(1)+"\t"+x(2)))
+ daily_revenueseq_rdd.coalesce(1).saveAsSequenceFile("/user/training/sarvesh_sparksql_practice/daily_revenue/sequencegsnappy",Some(classOf[org.apache.hadoop.io.compress.SnappyCodec]))
+ 
+
+
+b)Gzip
+
+
+ --parquetgzip
+  
+ sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+ daily_revenue_df.coalesce(1).write.parquet("/user/training/sarvesh_sparksql_practice/daily_revenue/parquetgzip")
+ 
+ --orcgzip
+ sqlContext.setConf("spark.sql.orc.compression.codec","gzip")
+ daily_revenue_df.coalesce(1).write.orc("/user/training/sarvesh_sparksql_practice/daily_revenue/orcgzip")
+ 
+ --jsongzip
+ sqlContext.setConf("spark.sql.json.compression.codec","gzip")
+ daily_revenue_df.coalesce(1).write.json("/user/training/sarvesh_sparksql_practice/daily_revenue/jsongzip")
+ 
+ --avrogzip
+  import com.databricks.spark.avro._
+ sqlContext.setConf("spark.sql.avro.compression.codec","gzip")
+ daily_revenue_df.coalesce(1).write.avro("/user/training/sarvesh_sparksql_practice/daily_revenue/avrogzip")
+ 
+--textgzip
+var daily_revenue_rdd=daily_revenue_df.map(x=>x(0)+"\t"+x(1)+"\t"+x(2))
+daily_revenue_rdd.coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/textgzip",classOf[org.apache.hadoop.io.compress.GzipCodec])
+
+--sequencegzip is not supported
+
+
+
+// ===================================================================================================================================================================================================================================================================================================================================================================
+// WRITE TO TEXT FILE
+// save as text file output with pipe as delimiter
+
+daily_revenue_df.rdd.map(rec => rec.mkString(" | ")).take(10).foreach(println)
+daily_revenue_df.rdd.map(rec => rec.mkString(" | ")).coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/text_pipe_data")
+
+// save as text file output with tab as delimiter
+daily_revenue_df.rdd.map(rec => rec.mkString(" \t ")).take(10).foreach(println)
+daily_revenue_df.rdd.map(rec => rec.mkString(" \t ")).coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/text_tab_data")
+
+// save as text file output with comma as delimiter (CSV)
+daily_revenue_df.rdd.map(rec => rec.mkString(" , ")).coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/text_comma_data")
+daily_revenue_df.rdd.map(rec => rec.mkString(" , ")).coalesce(1).saveAsTextFile("/user/training/sarvesh_sparksql_practice/daily_revenue/text_comma_data_snappy", classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+
+
+***************reading diffrent file format*************************
+
+// file can be read irrespective of compression
+
+--read parquet
+
+val parquetDF = sqlContext.read.parquet("/user/training/sarvesh_sparksql_practice/daily_revenue/parquet")
+
+val parquetDFzip = sqlContext.read.parquet("/user/training/sarvesh_sparksql_practice/daily_revenue/parquetgzip")
+
+
+--read json
+
+var jsondf = sqlContext.read.json("/user/training/sarvesh_sparksql_practice/daily_revenue/json")
+
+--read orc
+
+var orcdf = sqlContext.read.orc("/user/training/sarvesh_sparksql_practice/daily_revenue/orc")
+
+--read avro
+import com.databricks.spark.avro._
+var avrodf = sqlContext.read.avro("/user/training/sarvesh_sparksql_practice/daily_revenue/avro")
+
+
+
+---read json file and back to transformation just hypothetical example-----
+
+
+scala> var jsondf = sqlContext.read.json("/user/training/sarvesh_sparksql_practice/daily_revenue/json")
+jsondf: org.apache.spark.sql.DataFrame = [daily_revenue_per_product: double, order_date: string, product_Name: string]
+
+scala> var jsonmap=jsondf.map(x=>(x(1).toString,x(2).toString,x(0).toString))
+jsonmap: org.apache.spark.rdd.RDD[(String, String, String)] = MapPartitionsRDD[189] at map at <console>:27
+
+scala> var jsond=jsonmap.map(x=> (x._1,x._2,x._3) ).toDF
+jsond: org.apache.spark.sql.DataFrame = [_1: string, _2: string, _3: string]
+
+scala> jsond.show
++--------------------+--------------------+-------+
+|                  _1|                  _2|     _3|
++--------------------+--------------------+-------+
+|2013-07-25 00:00:...|Field & Stream Sp...|5599.72|
+|2013-07-25 00:00:...|Nike Men's Free 5...|5099.49|
+|2013-07-25 00:00:...|Diamondback Women...| 4499.7|
+|2013-07-25 00:00:...|Perfect Fitness P...|3359.44|
+|2013-07-25 00:00:...|Pelican Sunstream...|2999.85|
+|2013-07-25 00:00:...|O'Brien Men's Neo...|2798.88|
+
+
+
+

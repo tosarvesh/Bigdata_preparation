@@ -1,0 +1,277 @@
+
+create database my_retail_db;
+
+use my_retail_db;
+
+
+create table orders
+(
+order_id int,
+order_date string,
+order_customer_id int ,
+status string
+)
+row format delimited fields terminated by ','
+stored as textfile;
+
+
+--use location clause for external table if you use location with managed table still you need to load data manually into managed table. so there is no sence 
+
+create external table orders_ext
+(
+order_id int,
+order_date string,
+order_customer_id int ,
+status string
+)
+row format delimited fields terminated by ','
+stored as textfile
+location '/user/hive/warehouse/my_retail_db.db/orders_ext';
+
+
+load data local inpath "/home/training/data/retail_db/orders" into table orders;
+
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --table-name orders --target-dir /user/hive/warehouse/my_retail_db.db/orders_avro -m 1
+
+
+
+hdfs dfs -get /user/hive/warehouse/my_retail_db.db/orders_avro/part-m-00000.avro
+
+avro-tools getschema part-m-00000.avro > orders_schema_file.avsc
+
+hdfs dfs - copyFromLocal  orders_schema_file.avsc  /user/hive/warehouse/my_retail_db.db/orders_schema/
+
+/user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --table orders --target-dir /user/hive/warehouse/my_retail_db.db/orders_avro -m 1 --as-avrodatafile
+
+create table orders_avro_managed(
+order_id int,
+order_date string,
+order_customer_id int ,
+status string)
+stored as avro 
+tblproperties('avro.schema.url'='/user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc');
+
+load data inpath "/user/hive/warehouse/my_retail_db.db/orders_avro" into table orders_avro_managed;
+
+
+
+create table orders_avro_managed1(
+order_id int,
+order_date string,
+order_customer_id int ,
+status string)
+stored as avro 
+tblproperties('avro.schema.url'='/user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc');
+
+load data inpath "/user/hive/warehouse/my_retail_db.db/orders_avro" into table orders_avro_managed1;
+
+
+
+create table orders_avro
+stored as avro 
+tblproperties('avro.schema.url'='/user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc');
+
+
+create external table orders_avro_ext
+stored as avro 
+Location '/user/training/my_retail_db.db/orders_avro'
+tblproperties('avro.schema.url'='/user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc');
+
+load data inpath "/user/hive/warehouse/my_retail_db.db/orders_avro" into table orders_avro;
+
+--eveolve avro schema
+
+
+hdfs dfs -get /user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc
+
+gedit orders_schema_file.avsc
+
+--change schema add new column order_zone and order_style
+
+{
+  "type" : "record",
+  "name" : "orders",
+  "doc" : "Sqoop import of orders",
+  "fields" : [ {
+    "name" : "order_id",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_id",
+    "sqlType" : "4"
+  }, {
+    "name" : "order_date",
+    "type" : [ "null", "long" ],
+    "default" : null,
+    "columnName" : "order_date",
+    "sqlType" : "93"
+  }, {
+    "name" : "order_customer_id",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_customer_id",
+    "sqlType" : "4"
+  },{
+    "name" : "order_style",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_style",
+    "sqlType" : "12"
+  }, {
+    "name" : "order_zone",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_zone",
+    "sqlType" : "4"
+  }, {
+    "name" : "order_status",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_status",
+    "sqlType" : "12"
+  } ],
+  "tableName" : "orders"
+}
+
+
+
+
+hdfs dfs -copyFromLocal -f orders_schema_file.avsc /user/hive/warehouse/my_retail_db.db/orders_schema/orders_schema_file.avsc
+---use insert statement to load in orc table
+
+create table orders_orc(
+order_id int,
+order_date string,
+order_customer_id int ,
+status string
+)
+row format delimited fields terminated by ','
+stored as orc;
+
+
+insert into table orders_orc select * from orders;
+
+
+insert overwrite table orders_orc select * from orders;
+
+
+---partitioning
+
+/* STATIC PARTITIONING */
+-- Create partitioned table
+
+create table orders_static_partition(
+order_id int,
+order_date string,
+order_customer_id int 
+)
+partitioned by (order_status string)
+row format delimited fields terminated by ','
+stored as textfile;
+
+load data local inpath '/home/training/orders_closed.txt' into table orders_static_partition partition(order_status='CLOSED');
+
+
+
+load data local inpath '/home/training/orders_closed.txt' into table orders_static_partition partition(order_status='PENDING');
+
+-- to see all the partitions on a table
+hive> show partitions orders_static_partition;
+
+
+
+/* DYNAMIC PARTITIONING */
+
+-- We always need an external staging table while using the dynamic partitioning
+-- The location pointed here is from HDFS in which there is one single file emp.txt
+-- There are no separate files split by the partitioned key dept.
+
+set hive.exec.dynamic.partition.mode=nonstrict
+
+--Do not include partitioned column in the create table statement just include in partitioned by clause
+
+create table orders_partition(
+order_id int,
+order_date string,
+order_customer_id int 
+)
+partitioned by (order_status string)
+row format delimited fields terminated by ','
+stored as textfile;
+
+
+insert into orders_partition partition(order_status) select * from orders;
+
+
+--bucketing
+
+create table orders_bucket(
+order_id int,
+order_date string,
+order_customer_id int ,
+status string
+)
+clustered by (order_date) sorted by (order_date ) into 4 buckets
+row format delimited fields terminated by ','
+stored as textfile;
+
+
+insert overwrite  table orders_bucket  select * from orders
+
+set hive.enforce.bucketing=true;
+
+
+create table orders_bucket( order_id int,
+order_date string,
+order_customer_id int ,
+status string
+)
+clustered by (order_date) sorted by (order_date ) into 4 buckets;
+                            ;
+                         
+insert overwrite  table  orders_bucket  select * from orders ;
+
+
+-- All the files are in binary format, however in order to read the contents of each of the bucketed files, use
+
+hive> select * from orders_bucket tablesample(bucket 1 out of 4 on order_date);
+
+
+-- In order to check the file system from hive prompt use dfs command
+hive> dfs -ls <path_name>
+
+-- In order to check the table details like - where it is stored in the HDFS etc. use the below command
+hive> describe formatted <table_name>;
+
+-- In order to see all vailable functions
+hive> show functions;
+
+-- In order to get help on specific function
+hive> describe function <function_name>;
+
+
+
+---avro managed table
+
+avro-tools getschema part-r-00198-7610b42b-303a-49f5-8f1e-c6534a449a91.avro> order_item_order_dtl.avsc
+
+hdfs dfs -copyFromLocal order_item_order_dtl.avsc /user/training/
+
+create table order_item_dtl_avro1
+(order_id Int,
+order_date String,
+order_status String,
+order_item_subtotal Float
+)
+stored as avro
+tblproperties("avro.schema.url"="/user/training/order_item_order_dtl.avsc");
+
+load data  inpath "/user/training/join_ord_ord_iems/avro/part-r-00198-7610b42b-303a-49f5-8f1e-c6534a449a91.avro" into table order_item_dtl_avro1;
+
+
+
+
+
+

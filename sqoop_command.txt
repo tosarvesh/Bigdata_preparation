@@ -1,0 +1,279 @@
+--list database and tables
+
+sqoop list-databases --connect jdbc:mysql://localhost --username root
+
+sqoop list-tables --connect jdbc:mysql://localhost/retail_db --username root
+
+--eval to evaluate a query
+
+sqoop eval --connect jdbc:mysql://localhost/retail_db --username root  --query "select count(*) from orders"
+
+sqoop eval --connect jdbc:mysql://localhost/retail_db --username root --query "insert into orders values(10000,'2018--2-24 00:00:00.0',1233,'DUMMY')"
+
+sqoop eval --connect jdbc:mysql://localhost/retail_export --username root --query "create table dummy(i int)"
+
+
+--import and split-by
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice --split-by order_id --table orders -num-mappers 1
+
+-append --to append in the directory
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice --split-by order_id --table orders -num-mappers 1 -append
+
+
+--delete-target-dir(delete target directory )
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice --split-by order_id --table orders --delete-target-dir
+
+autoreset-to-one-mapper:  if there is no primary key we can use this option
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice --autoreset-to-one-mapper --table orders --delete-target-dir
+
+--file format
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/avro --autoreset-to-one-mapper --table orders --delete-target-dir \
+--as-avrodatafile
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/parquet --autoreset-to-one-mapper --table orders --delete-target-dir \
+--as-parquetfile
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/sequence --autoreset-to-one-mapper --table orders --delete-target-dir\
+--as-sequencefile
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text --autoreset-to-one-mapper --table orders --delete-target-dir\
+--as-textfile
+
+----You can not import from sqoop directly as orc file need to use hcatalog hive table option will create file under /user/training/warehouse/my_table_orc
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/orc --autoreset-to-one-mapper --table orders --delete-target-dir \
+--hcatalog-database default --hcatalog-table my_table_orc --create-hcatalog-table --hcatalog-storage-stanza "stored as orcfile"
+
+--use hcatalog for json file as well
+
+
+--compression
+
+
+--gzip
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text_gzip --autoreset-to-one-mapper --table orders --delete-target-dir \
+--as-textfile --compress --compression-codec org.apache.hadoop.io.compress.GzipCodec
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/gzip --autoreset-to-one-mapper --table orders --delete-target-dir \
+--as-parquetfile --compress --compression-codec org.apache.hadoop.io.compress.GzipCodec
+
+--snappy
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text_snappy --autoreset-to-one-mapper --table orders --delete-target-dir\
+--as-textfile --compress --compression-codec org.apache.hadoop.io.compress.SnappyCodec
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/parquetsnappy --autoreset-to-one-mapper --table orders --delete-target-dir \
+--as-parquetfile --compress --compression-codec org.apache.hadoop.io.compress.SnappyCodec
+
+
+---to view the compressed file
+hdfs dfs -get /user/training/sarvesh_practice/text_gzip/part-m-00000.gz
+gunzip part-m-00000.gz
+tail part-m-00000
+
+or
+
+hdfs dfs -text /user/training/sarvesh_practice/text_gzip/part-m-00000.gz
+
+
+
+
+--boundary-query :Boundary query to use for creating splits
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text_boundary  --split-by order_id --table orders --delete-target-dir --as-textfile --boundary-query "select min(order_id),max(order_id) from orders where order_id<10000"
+
+**************where****************
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text_where  --split-by order_id --table orders --delete-target-dir --as-textfile --where "order_id<10"
+
+
+
+*********query****************
+
+ sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text_query  --split-by order_id --query  "select * from orders where order_id <100 and \$CONDITIONS" --delete-target-dir --as-textfile
+
+
+***null-string and --null-non-string****************
+
+ sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/text_query_null  --split-by order_id --query  "select * from orders where order_id <100 and \$CONDITIONS" --delete-target-dir --as-textfile --null-string "NA" --null-non-string -1
+
+********incremental import************
+
+--check-column (col)	Specifies the column to be examined when determining which rows to import. (the column should not be of type CHAR/NCHAR/VARCHAR/VARNCHAR/ LONGVARCHAR/LONGNVARCHAR)
+--incremental (mode)	Specifies how Sqoop determines which rows are new. Legal values for mode include append and lastmodified.
+--last-value (value)	Specifies the maximum value of the check column from the previous import.
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/incremental --split-by order_id \
+--incremental append --check-column order_id --last-value 0
+
+
+better to create job if you want --lastvalue to be updated automatically for next run care by job
+
+sqoop job --create "import_orders" -- import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/incremental --split-by order_id --incremental append --check-column order_id --last-value 0 --table orders
+
+sqoop job --exec import_orders (--last value used will be 0)
+
+sqoop job --exec import_orders (--last value used will be highest value used in last job execution above)
+
+sqoop job --create "import_orders_lastmodified" -- import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice/incremental_lastmodified --split-by order_id --incremental lastmodified --check-column order_id --table orders
+
+sqoop job --exec import_orders_lastmodified
+
+
+sqoop job --create test_2 -- import --connect jdbc:mysql://localhost/retail_db --username root --target-dir /user/training/sarvesh_practice_incremental/incrementals --split-by order_id --incremental lastmodified --check-column order_date --last-value '2014-07-22 00:00:00'  --table orders
+sqoop job --exec test_2
+
+
+
+************hive-import********************
+hive>create database test_hive_import
+hive>create table orders( 
+                             order_id int,
+                             order_date string,
+                             order_customer_id int ,
+                             order_status string
+                             )
+                             stored as textfile ;
+
+
+sqoop import --connect jdbc:mysql://localhost/retail_db --username root --hive-import --hive-database test_hive_import --hive-table orders --table orders -m 1
+
+**********hive-overwrite: Overwrite  if table exists**************
+
+sqoop import \
+  --connect jdbc:mysql://localhost/retail_db \
+  --username root \
+  --table order_items \
+ --split-by order_id \
+  --hive-import \
+  --hive-database test_hive_import \
+  --hive-table order_items \
+  --num-mappers 1 \
+  --hive-overwrite
+  
+ ******create-hive-table****************8 
+ 
+ sqoop import-all-tables --connect "jdbc:mysql://quickstart.cloudera:3306/retail_db" --username retail_dba --password cloudera --warehouse-dir /user/hive/warehouse/problem6.db --hive-import --hive-database problem6 --create-hive-table --as-textfile;
+
+ sqoop import --connect jdbc:mysql://localhost/retail_db --username root --table order_items --split-by order_id --hive-import --hive-database test_hive_import     --hive-table order_items_hive     --num-mappers 1     --create-hive-table --hive-overwrite --target-dir /user/training/order_items_hive
+ 
+ 
+ ***import-all-tables***********
+ 
+ sqoop  import-all-tables   --connect jdbc:mysql://localhost/test --username training --m 1  --warehouse-dir=/user/training/sqoop_import
+
+*****outdir to generate java code****
+
+sqoop import-all-tables --num-mappers 1 --connect "jdbc:mysql://localhost/retail_db" --username=root --hive-import  --create-hive-table --outdir java_files --hive-database test_hive_import
+
+
+**********Validate by running this query on shell prompt*********
+hive -e "USE retail_db; SHOW TABLES; SELECT * FROM orders;"
+
+
+*************sqoop merge****************
+
+1:Using sqoop merge data available in /user/training/problem5/products-text-part1 and /user/cloudera/problem5/products-text-part2 
+to produce a new set of files in /user/training/problem5/products-text-both-parts
+
+sqoop merge --class-name products_replica  \
+--jar-file /tmp/sqoop-training/compile/58eef185483e6f0c39751a4fa136561d/products_replica.jar \
+--new-data /user/training/problem5/products-text-part2 \
+--onto /user/training/problem5/products-text-part1 \
+--target-dir  /user/training/problem5/products-text-both-parts \
+--merge-key product_id
+
+
+*********stage table*************
+
+sqoop export --connect   jdbc:mysql://localhost/retail_db \
+       --username root \
+       --table departments 
+       --export-dir /user/hive/warehouse/retail_ods.db/departments 
+       --input-fields-terminated-by '|' 
+       --input-lines-terminated-by 'n' 
+       --staging_table department_stage
+      --clear-staging-table
+      
+*********sqoop export******************
+--updatemode  --updateonly ,allowinsert
+mysql>create table order_items_export as select * from retail_db.order_items;
+mysql>alter table order_items_export add primary key (order_item_id);
+
+sqoop export --connect jdbc:mysql://localhost/retail_export --username root --export-dir /user/hive/warehouse/test_hive_import.db/order_items --table order_items_export --update-mode allowinsert --update-key order_item_id -m 1 --input-fields-terminated-by '\001' --input-null-non-string "null" --input-null-string "null" --  columns  order_item_id , order_item_order_id  , order_item_product_id , order_item_quantity , order_item_subtotal  ,order_item_product_price
+
+mysql> select count(*) from order_items_export;
++----------+
+| count(*) |
++----------+
+|   172201 |
++----------+
+
+hive (test_hive_import)> insert into order_items values(172202,68883,502,1,50,50);
+
+sqoop export --connect jdbc:mysql://localhost/retail_export --username root --export-dir /user/hive/warehouse/test_hive_import.db/order_items --table order_items_export --update-mode allowinsert --update-key order_item_id -m 1 --input-fields-terminated-by '\001' --input-null-non-string "null" --input-null-string "null" --  columns  order_item_id , order_item_order_id  , order_item_product_id , order_item_quantity , order_item_subtotal  ,order_item_product_price
+
+mysql> select count(*) from order_items_export;
++----------+
+| count(*) |
++----------+
+|   172202 |
++----------+
+
+
+
+
+create table order_item_dtl
+(order_id Int,
+order_date date,
+order_status varchar(45),
+order_item_subtotal Float
+);
+
+load data local inpath "/home/training/ord_item_dtl"   into table order_item_dtl;
+
+
+sqoop export --connect jdbc:mysql:localhost//retail_database --username root --export-dir /user/hive/warehouse/final_exam_practice.db/order_item_dtl --update-mode updateonly --update-key order_id -m1 --table order_item_dtl 
+
+
+
+sqoop export --connect jdbc:mysql://localhost/retail_database --username root --export-dir /user/hive/warehouse/final_exam_practice.db/order_item_dtl1 --update-mode allowinsert --update-key order_id -m1 --table order_item_dtl --input-fields-terminated-by '\001'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+sqoop export --connect jdbc:mysql://localhost/retail_export --username root --table order_items --input-fields-terminated-by '\001' --export-dir /user/hive/warehouse/test_hive_import.db/order_items --columns --  columns  order_item_id , order_item_order_id  , order_item_product_id , order_item_quantity , order_item_subtotal  ,order_item_product_price
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

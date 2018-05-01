@@ -1,0 +1,1431 @@
+scenario1:load customeres data available in metastore and save customer_id and concatenate customer_fname --space --customer lname and 
+save as avro file.
+
+
+create database myproblem1;
+use myproblem1;
+
+create table customers(
+ customer_id        int     ,
+ customer_fname     string  ,
+ customer_lname    string  ,
+ customer_email    string ,
+ customer_password string  ,
+ customer_street    string ,
+ customer_city     string ,
+ customer_state    string  ,
+ customer_zipcode  string  
+);
+
+load data inpath "/user/hive/warehouse/myproblem1.db/customers" into table customers1 ;
+
+
+hdfs dfs -ls /user/hive/warehouse/myproblem1.db/customers
+
+no files after load 
+
+
+load customeres data available in metastore and save customer_id and concatenate customer_fname --space --customer lname and save as avro file.
+
+
+
+--load customeres data available in metastore and save customer_id and concatenate customer_fname --space --customer lname and save as avro file.
+
+
+var hc=new org.apache.spark.sql.hive.HiveContext(sc)
+var sqlresult=hc.sql("select customer_id,concat(concat(fname,' '),lname) from myproblem1.db/customers1")
+import com.databricks.spark.avro._
+sqlresult.write.avro("/user/training/scenarios/scenario1/customer_data");
+
+scala> sqlresult.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/scenarios/scenario1/text/customer_data");
+                                                                                
+scala> sqlresult.write.avro("/user/training/scenarios/scenario1/avro/customer_data");
+                                                                                
+scala> sqlresult.rdd.map(x=>(x(0).toString,x.mkString("\t"))).saveAsSequenceFile("/user/training/scenarios/scenario1/sequences/customer_data");
+
+
+
+
+Read long json file and load as textfile with first five columns.
+
+
+
+export 7 columns to table emp 
+
+
+Scenario2:
+
+Import all rows from the table customer in mysql having lastname as smith.
+
+
+Scenario 3:
+
+Read employees text file which tab seperated and write only first 7 columns as textfile back to hdfs with | as delimiter in file /user/training/emp_select_txt/.
+
+eid	fname	lname	age	salary	doj	city	state	zip	
+101	sarvesh	gupta	32	1000	2015-04-16	st.louis	MO	63042	10
+102	manisha	gupta	33	2000	2017-07-02	maryland heights	MO	63043	20
+103	arnav	gupta	38	6200	2014-05-15	new delhi	DL	63044	10
+104	Ramesh	vasu	54	8500	2010-08-11	knoxville	TN	37019	30
+105	Jigar	sharma	40	4562	2011-05-25	st.Louis	MO	63042	20
+106	Abhi	sharma	30	4552	2011-04-25	st.Louis	MO	63042	
+
+var emp_rdd=sc.textFile("/user/training/employees_info/employees")
+var emp_map=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(3),d(4),d(5),d(6))})
+emp_map.map(x=>(x._1+"|"+x._2+"|"+x._3+"|"+x._4+"|"+x._5+"|"+x._6)).saveAsTextFile("/user/training/emp_select/")
+emp_map.map(x=>(x._1+"|"+x._2+"|"+x._3+"|"+x._4+"|"+x._5+"|"+x._6)).saveAsTextFile("/user/training/emp_select_compressed/",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+--save as jsonfile
+var emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(3),d(4),d(5),d(6))}).toDF("eid","fname","lname","age","salary","doj","city")
+emp_df.toJSON.saveAsTextFile("/user/training/emp_select/json/")
+
+Scenario 4:
+
+a) read data employee and department data avilable at /user/training/practice_data/employee/ and  /user/training/practice_data/department/ ,
+which is tab delimited and get the employee_id and theier department.
+
+var emp_rdd=sc.textFile("/user/training/practice_data/employee/")
+emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(4),d(9))}).toDF("eid","fname","lname","salary","e_did")
+var dept_rdd=sc.textFile("/user/training/practice_data/department/")
+var dept_df=dept_rdd.map(x=>{var d=x.split("\t");(d(0),d(1))}).toDF("d_did","deptname")
+var join_df=emp_df.join(dept_df,emp_df("e_did")===dept_df("d_did"))
+join_df.registerTempTable("emp_dept")
+var sqlresult=sqlContext.sql("select eid,fname,lname,salary,deptname,d_did from emp_dept")
+sqlresult.show
+sqlresult.write.orc("/user/training/emp_dept/orc/");
+sqlresult.write.json("/user/training/emp_dept/json/");
+import com.databricks.spark.avro._;
+sqlresult.write.avro("/user/training/emp_dept/avro/");
+
+sqlresult.rdd.map(x=>(x(0).toString,x.mkString(","))).saveAsSequenceFile("/user/training/emp_dept/sequence/")
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+sqlresult.write.parquet("/user/training/emp_dept/parquet/");
+
+
+--gzip
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/emp_dept/parquet/gzip");
+
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/emp_dept/parquet/gzip");
+
+
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/emp_dept/parquet/gzip");
+
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/emp_dept/parquet/gzip");
+
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/emp_dept/parquet/gzip");
+--snappy
+
+
+
+
+b) read data employee and department data avilable at /user/training/practice_data/employee/ and  
+/user/training/practice_data/department/ ,which is text delimited and get the inactive employees not assigned to 
+any department.
+
+scala> var emp_rdd=sc.textFile("/user/training/practice_data/employee/")
+emp_rdd: org.apache.spark.rdd.RDD[String] = /user/training/practice_data/employee/ MapPartitionsRDD[291] at textFile at <console>:33
+
+scala> emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(4),d(9))}).toDF("eid","fname","lname","salary","e_did")
+emp_df: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string]
+
+scala> var dept_rdd=sc.textFile("/user/training/practice_data/department/")
+dept_rdd: org.apache.spark.rdd.RDD[String] = /user/training/practice_data/department/ MapPartitionsRDD[295] at textFile at <console>:33
+
+scala> var dept_df=dept_rdd.map(x=>{var d=x.split("\t");(d(0),d(1))}).toDF("d_did","deptname")
+dept_df: org.apache.spark.sql.DataFrame = [d_did: string, deptname: string]
+
+scala> var inac_emp_dept_join=emp_df.join(dept_df,emp_df("e_did")===dept_df("d_did"),"left")
+inac_emp_dept_join: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string, d_did: string, deptname: string]
+
+scala> inac_emp_dept_join.registerTempTable("Inactive_empployee")
+
+scala> var sqlresult1=sqlContext.sql("select * from Inactive_empployee where d_did is null")
+sqlresult1: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string, d_did: string, deptname: string]
+
+
+scala> sqlresult1.show
++---+-----+-----+------+-----+-----+--------+                                   
+|eid|fname|lname|salary|e_did|d_did|deptname|
++---+-----+-----+------+-----+-----+--------+
+|106|Rahul|Singh|  5000|63044| null|    null|
++---+-----+-----+------+-----+-----+--------+
+
+b) read data employee and department data avilable at /user/training/practice_data/employee/ and  /user/training/practice_data/department/ 
+,which is text delimited and get all the departments ,which don't have any employees.
+
+scala> var inac_dept_join=emp_df.join(dept_df,emp_df("e_did")===dept_df("d_did"),"right")
+inac_dept_join: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string, d_did: string, deptname: string]
+
+scala> inac_dept_join.registerTempTable("Inactive_dept")
+
+scala> var sqlresult2=sqlContext.sql("select * from Inactive_dept  where e_did is null")
+sqlresult2: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string, d_did: string, deptname: string]
+
+scala> sqlresult2.show
++----+-----+-----+------+-----+-----+--------+                                  
+| eid|fname|lname|salary|e_did|d_did|deptname|
++----+-----+-----+------+-----+-----+--------+
+|null| null| null|  null| null|   40|      HR|
++----+-----+-----+------+-----+-----+--------+
+
+
+
+scenario 5:
+ read customer file and load status and count of customer in TX state as avro data file.
+ 
+ 
+ 
+ Problem 6:Load Dept and Employees date into MYSQL database employees_info into employee and dept table as shown below..
+ 
+  
+ [training@localhost ~]$ hdfs dfs -ls /user/training/practice_data/employee/
+ Found 1 items
+ -rw-rw-rw-   1 training supergroup        401 2018-04-06 20:18 /user/training/practice_data/employee/employee
+ [training@localhost ~]$ hdfs dfs -tail /user/training/practice_data/employee/employee
+ 101	sarvesh	gupta	32	1000	2015-04-16	st.louis	MO	63042	10
+ 102	manisha	gupta		2000	2017-07-02	maryland heights	MO	63043	20
+ 103	arnav	gupta	38	6200	2014-05-15	new delhi	DL	63044	10
+ 104	Ramesh		54	8500	2010-08-11	knoxville	TN	37019	30
+ 105	Jigar	sharma	40	4562	2011-05-25	st.Louis	MO	63042	20
+ 106	Rahul	Singh	33		2017-04-20	Newyork		NY	63044			  	
+ 106	Abhi	sharma	30	4552	2011-04-25	st.Louis	MO	63042	80	
+ [training@localhost ~]$ hdfs dfs -ls /user/training/practice_data/department/
+ Found 1 items
+ -rw-rw-rw-   1 training supergroup         33 2018-03-29 11:39 /user/training/practice_data/department/department
+ [training@localhost ~]$ hdfs dfs -tail /user/training/practice_data/department/department
+ 10	Sales
+ 20	IT
+ 30	Accounts
+ 40	HR
+ 
+ create database employees_info;
+ use employees_info;
+ create table employee(
+  emp_id int,
+  emp_lname varchar(50),
+  emp_fname varchar(50),
+  emp_salary float,
+  emp_age int,
+  emp_dob varchar(50),
+  emp_city varchar(100),
+  emp_state varchar(10),
+  emp_zip int,
+  emp_dept_id int
+  );
+  
+  create table department(dept_name varchar(100),dept_id int);
+ 
+ 
+sqoop export --connect jdbc:mysql://localhost/employees_info --username root --table employee --input-fields-terminated-by "\t" --input-null-string "NA"  --input-null-non-string -1  -m 1 --columns "emp_id,emp_fname,emp_lname,emp_age,emp_salary,emp_dob,emp_city,emp_state,emp_zip,emp_dept_id"  --export-dir /user/training/practice_data/employee
+  
+sqoop export --connect jdbc:mysql://localhost/employees_export --username root --table employees --input-fields-terminated-by "\t" --input-null-string "NA"  --input-null-non-string -1  -m 1 --columns "emp_id,emp_fname,emp_lname,emp_age,emp_salary,emp_dob,emp_city,emp_state,emp_zip,emp_dept_id"  --export-dir /user/training/practice_data/employee
+
+
+sqoop export --connect jdbc:mysql://localhost/employees_info --username root --export-dir /user/training/practice_data/department/ \
+--table department  --input-fields-terminated-by "\t" \
+--input-null-string "NA" \
+--input-null-non-string -1    -m 1  \
+--columns "dept_id,dept_name"
+
+
+verify the number of records
+
+[training@localhost ~]$ hdfs dfs -cat /user/training/practice_data/employee/employee |wc -l
+
+
+problem 7:There is a employee_info database in mysql. Import all tables  in HDFS in 'solution' database in hive.
+Save all table data in  warehouse directory '/user/hive/warehouse/solution' 
+Tables should be accessible via hive 
+table data should be tab separated format.
+
+hive (cca175problem5)> create database solution;
+OK
+Time taken: 1.187 seconds
+hive (cca175problem5)> use solution;
+
+sqoop import-all-tables --connect jdbc:mysql://localhost/employees_info --username root --warehouse-dir /user/hive/warehouse/solution.db/ -m 1 --hive-database solution --create-hive-table --hive-import
+
+
+
+task#3 : 
+
+Write a scala script to read employee data from warehouse. Modify data to be tab separated instead of comma separated
+and save results in '/user/training/solution3'
+
+solution 1:
+sqlContext.sql("use solution")
+scala> var emp_df=sqlContext.sql("select * from employee")
+scala> emp_df.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/solution03/text")
+
+Solution 2:
+
+var emp_rdd=sc.textFile("/user/hive/warehouse/solution.db/employee/")
+var emp_df=emp_rdd.map(x=>{var d=x.split("\001");(d(0),d(1),d(2),d(3),d(4),d(5),d(6),d(7),d(8),d(9))}).toDF
+emp_df.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/solution03/text_way2")
+
+Solution 3:
+
+var emp_rdd=sc.textFile("/user/hive/warehouse/solution.db/employee/")
+var emp_map=emp_rdd.map(x=>{var d=x.split("\001");(d(0),d(1),d(2),d(3),d(5),d(6),d(7),d(8),d(9))})
+emp_map.map(x=>x._1+"\t"+x._2+"\t"+x._3+"\t"+x._4+"\t"+x._5+"\t"+x._6+"\t"+x._7+"\t"++"\t"x._8+"\t"+x._9).saveAsTextFile("/user/training/solution03/text_way3")
+
+ 
+ Solution 4:
+ 
+ scala> var emp_rdd=sc.textFile("/user/hive/warehouse/solution.db/employee/")
+ emp_rdd: org.apache.spark.rdd.RDD[String] = /user/hive/warehouse/solution.db/employee/ MapPartitionsRDD[45] at textFile at <console>:27
+ 
+ scala> var emp_map=emp_rdd.map(x=>x.split("\001"))
+ emp_map: org.apache.spark.rdd.RDD[Array[String]] = MapPartitionsRDD[46] at map at <console>:29
+ 
+ scala> var emp=emp_map.map(x=>x(0)+"\t"+x(1)+"\t"+x(3))
+ emp: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[47] at map at <console>:31
+ ---or use mkString
+ scala> var emp=emp_map.map(x=>x.mkString("\t"))
+ emp: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[48] at map at <console>:31
+ 
+ scala> var emp=emp_map.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/solution03/text_way4")
+ 
+ 
+ task# 4
+ 
+ Task#04 :
+ 
+ Write scala script to find the employees whose lives in MO state  and salary is in range '$2,000 - $10,000'. data available at 
+ /user/hive/warehouse/solution.db/employee
+ Save the results in '/user/training/solution4/text' 
+ 
+ Output should be in following format -
+ 
+employeeID,emp_fame(space)emp_lname,salary
+ 
+ scala>  var emp_rdd=sc.textFile("/user/hive/warehouse/solution.db/employee")
+ emp_rdd: org.apache.spark.rdd.RDD[String] = /user/hive/warehouse/solution.db/employee MapPartitionsRDD[83] at textFile at <console>:27
+ 
+ scala>  var emp_df =emp_rdd.map(x=>{var d=x.split("\001");(d(0),d(1),d(2),d(3),d(7))}).toDF("employeeID","emp_lname","emp_fname","salary","emp_state")
+ emp_df: org.apache.spark.sql.DataFrame = [employeeID: string, emp_lname: string, emp_fname: string, salary: string, emp_state: string]
+ 
+ scala>  emp_df.registerTempTable("employee")
+ 
+ scala>  var sqlresult=sqlContext.sql("select employeeID,concat(concat(emp_fname,' '),emp_lname) as emp_name,salary from employee where emp_state='MO' and salary between 2000 and 10000")
+ sqlresult: org.apache.spark.sql.DataFrame = [employeeID: string, emp_name: string, salary: string]
+ 
+ scala> sqlresult.show
+ +----------+-------------+------+
+ |employeeID|     emp_name|salary|
+ +----------+-------------+------+
+ |       102|manisha gupta|2000.0|
+ |       105| Jigar sharma|4562.0|
+ |       106|  Abhi sharma|4552.0|
+ +----------+-------------+------+
+ 
+ 
+ 
+ Task05 : 
+ 
+ Write a spark script to find the average salary of each state.
+ 
+ scala>  var sqlresult1=sqlContext.sql("select emp_state,cast(avg(salary) as decimal(10,2)) as avg_salary from employee group by emp_state")
+ sqlresult1: org.apache.spark.sql.DataFrame = [emp_state: string, avg_salary: decimal(10,2)]
+ 
+ scala> sqlresult1.show
+ +---------+----------+                                                          
+ |emp_state|avg_salary|
+ +---------+----------+
+ |       TN|   8500.00|
+ |       DL|   6200.00|
+ |       MO|   3028.50|
+ +---------+----------+
+
+
+Task06 :
+Write a scala/python script to find the employees who had largest increament in salary since they joined the company.
+
+
+Task07 : 
+This depends on data generated from task 03 at location /user/training/solution03/text. Create a employee_hire_table table in hive database solution
+which when queried on will perform faster when separated by a new columns 'Joining-year' and 'joining-month'. Table data should recide in 
+'/user/hive/warehouse/employee_hire_table'
+
+ 101	gupta	sarvesh	1000.0	32	2015-04-16	st.louis	MO	63042	10
+ 102	gupta	manisha	2000.0	null	2017-07-02	maryland heights	MO	63043	20
+ 103	gupta	arnav	6200.0	38	2014-05-15	new delhi	DL	63044	10
+ 104		Ramesh	8500.0	54	2010-08-11	knoxville	TN	37019	30
+ 105	sharma	Jigar	4562.0	40	2011-05-25	st.Louis	MO	63042	20
+ 106	sharma	Abhi	4552.0	30	2011-04-25	st.Louis	MO	63042	80
+
+
+
+var emp_rdd=sc.textFile("/user/training/solution03/text") 
+var emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(3),d(4),d(5),d(6),d(7),d(8),d(9))}).toDF("empid","empfname","emplname","empsal","empage","empdoj","empcity","empstate","empzip","empdeptid")
+
+emp_df.registerTempTable("employees")
+
+var sqlresult2=sqlContext.sql("select empid,empfname,emplname,empsal,empage,substr(empdoj,0,4) as joining-year,substr(empdoj,5,2) as joining-month,empcity,empstate,empzip,empdeptid from employees")
+sqlContext.sql("use solution")
+sqlresult2.saveAsTable("employee_hire_table");
+
+OR
+
+var sqlresult2=sqlContext.sql("select empid,empfname,emplname,empsal,empage,substr(empdoj,1,4) as joining_year,substr(empdoj,6,2) as joining_month,empcity,empstate,empzip,empdeptid from employees")
+sqlresult2.registerTempTable("employee_result_temp")
+
+sqlContext.sql("create table solution.employee_result as select * from employee_result_temp");
+
+Task08 : 
+This depends on data generated from task 07 at location '/user/hive/warehouse/employee_hire_table' .copy this data into another hdfs location 
+/user/hive/solution08.db/employee/
+Create a employee table in hive database solution08 and partion on joining year and joining month and load data from new location
+/user/hive/solution08.db/employee/
+
+
+
+Probem 9: Count number of words in a file.
+
+scala> var lines_rdd=sc.textFile("/user/training/test.txt")
+lines_rdd: org.apache.spark.rdd.RDD[String] = /user/training/test.txt MapPartitionsRDD[131] at textFile at <console>:27
+
+scala> var word_flat_rdd=lines_rdd.flatMap(x=>x.split(""))
+word_flat_rdd: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[132] at flatMap at <console>:29
+
+scala> var word_map=word_flat_rdd.map(word=>(word,1))
+word_map: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[133] at map at <console>:31
+
+scala> var word_rdd=word_map.reduceByKey((a,b)=>a+b).toDF("word","count")
+word_rdd: org.apache.spark.sql.DataFrame = [word: string, count: int]
+
+scala> word_rdd.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/words_file_count")
+
+
+
+Problem 10:Find the average salary of each department?read the employee and department file at location /user/hive/warehouse/solution.db/employee and /user/hive/warehouse/solution.db/department and save as avro,parquet,orc,json without compressed as well snappy and gzip compressed at location
+/user/training/solution10/uncompressed/text
+/user/training/solution10/uncompressed/avro
+/user/training/solution10/uncompressed/parquet
+/user/training/solution10/uncompressed/json
+/user/training/solution10/uncompressed/sequence
+
+compressed
+
+/user/training/solution10/compressed/snappy/text
+/user/training/solution10/compressed/snappy/avro
+/user/training/solution10/compressed/snappy/parquet
+/user/training/solution10/compressed/snappy/json
+
+/user/training/solution10/compressed/gzip/text
+/user/training/solution10/compressed/gzip/avro
+/user/training/solution10/compressed/gzip/parquet
+/user/training/solution10/compressed/gzip/json
+
+var emp_rdd=sc.textFile("/user/hive/warehouse/solution.db/employee/")
+var dept_rdd=sc.textFile("/user/hive/warehouse/solution.db/department/")
+
+var emp_df=emp_rdd.map(x=>{var d=x.split("\001");(d(0),d(1),d(2),d(3),d(9))}).toDF("empid","emplname","empfname","salary","emp_did")
+
+var dept_df=dept_rdd.map(x=>{var d=x.split("\001");(d(0),d(1))}).toDF("deptname","dept_did")
+
+var joined_df=dept_df.join(emp_df,dept_df("dept_did")===emp_df("emp_did"))
+
+joined_df.registerTempTable("dept_emp_temp")
+
+var sqlresult=sqlContext.sql("select deptname,avg(salary) as avg_salary from dept_emp_temp group by deptname")
+
+sqlresult.show
+
+sqlresult.rdd.map(x=>x.mkString("|")).saveAsTextFile("/user/training/solution10/uncompressed/text")
+sqlresult.rdd.map(x=>x.mkString("|")).saveAsTextFile("/user/training/solution10/compressed/gzip/text",classOf[org.apache.hadoop.io.compress.GzipCodec])
+sqlresult.rdd.map(x=>x.mkString("|")).saveAsTextFile("/user/training/solution10/compressed/snappy/text",classOf[org.apache.hadoop.io.compress.SnappyCodec])
+
+import com.databricks.spark.avro._;
+sqlresult.write.avro("/user/training/solution10/uncompressed/avro")
+sqlresult.write.json("/user/training/solution10/uncompressed/json")
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+sqlresult.write.parquet("/user/training/solution10/uncompressed/parquet")
+
+
+sqlContext.setConf("spark.sql.avro.compression.codec","gzip")
+sqlresult.write.avro("/user/training/solution10/compressed/gzip/avro")
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/solution10/compressed/gzip/parquet")
+sqlContext.setConf("spark.sql.json.compression.codec","gzip")
+sqlresult.write.json("/user/training/solution10/compressed/gzip/json")
+
+
+
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+sqlresult.write.avro("/user/training/solution10/compressed/snappy/avro")
+sqlContext.setConf("spark.sql.parquet.compression.codec","snappy")
+sqlresult.write.parquet("/user/training/solution10/compressed/snappy/parquet")
+sqlContext.setConf("spark.sql.json.compression.codec","snappy")
+sqlresult.write.json("/user/training/solution10/compressed/snappy/json")
+
+
+sqlresult.rdd.map(x=>(x(0).toString,x(0).toString+"\t"+x(1))).saveAsSequenceFile("/user/training/solution10/uncompressed/sequence")
+sqlresult.rdd.map(x=>(x(0).toString,x.mkString("\t"))).saveAsSequenceFile("/user/training/solution10/uncompressed/sequence/option2")
+
+
+
+problem11
+
+--just save two fields comma seperated .
+
+var emp_rdd_map=emp_rdd.map(x=>{var d=x.split("\001");(d(0),d(1),d(2),d(3),d(9))})
+emp_rdd_map.map(x=>x._1+","+x._2).saveAsTextFile("/user/training/testfile")
+
+or
+
+emp_rdd.map(x=>{var d=x.split("\001");(d(0)+","+d(1))}).saveAsTextFile("/user/training/testfile1")
+
+
+
+problem 12:
+
+Read sequence file at location and find average salary of Accounts department and save the result in avro format at 
+location /user/training/solution12/avro. and orc format at location /user/training/solution12/orc
+SequenceFile("/user/training/solution10/uncompressed/sequence")
+
+var seq_rdd=sc.sequenceFile("/user/training/solution10/uncompressed/sequence",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text])
+var seq_df=seq_rdd.map(x=>{var d=x._2.toString.split("\t");(d(0).toString,d(1).toFloat)}).toDF("Dept","avgsal")
+seq_df.registerTempTable("dept_avg_sal")
+var sqlresult=sqlContext.sql("select * from dept_avg_sal where dept='Accounts'");
+sqlresult.write.avro("/user/training/solution12/avro")
+
+
+problem 13:
+
+export the data from avro file at location /user/training/solution12/avro to mysql database inside the table dept_avg_sal_export in database 
+employees_export
+
+create table dept_avg_sal_export( dept varchar(50), avgsal Float);
+
+
+Problem 14:
+
+This depends on data generated from task 03 at location /user/training/solution03/text. as shown below
+101	gupta	sarvesh	1000.0	32	2015-04-16	st.louis	MO	63042	10
+ 102	gupta	manisha	2000.0	null	2017-07-02	maryland heights	MO	63043	20
+ 103	gupta	arnav	6200.0	38	2014-05-15	new delhi	DL	63044	10
+ 104		Ramesh	8500.0	54	2010-08-11	knoxville	TN	37019	30
+ 105	sharma	Jigar	4562.0	40	2011-05-25	st.Louis	MO	63042	20
+ 106	sharma	Abhi	4552.0	30	2011-04-25	st.Louis	MO	63042	80
+
+save this data and divide the joining date column into 'Joining-year' and 'joining-month' and save into hdfs file at this location
+/user/training/solution14/employee_hire_table
+
+Create a employee_hire_table table in hive database solution14
+which when queried on will perform faster when separated by a new columns 'Joining-year' and 'joining-month'.
+
+Table data should reside in 
+'/user/hive/warehouse/solution14/employee_hire_table'
+
+The above was for static partition.
+
+load data using solution.employee_result table in hive and perform dynamic partition on solution14.employee_hire_table_partitioned_dynamic
+
+
+var emp_rdd=sc.textFile("/user/training/solution03/text") 
+var emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(3),d(4),d(5),d(6),d(7),d(8),d(9))}).toDF("empid","empfname","emplname","empsal","empage","empdoj","empcity","empstate","empzip","empdeptid")
+emp_df.registerTempTable("employees")
+var sqlresult2=sqlContext.sql("select empid,empfname,emplname,empsal,empage,substr(empdoj,1,4) as joining_year,substr(empdoj,6,2) as joining_month,empcity,empstate,empzip,empdeptid from employees")
+sqlresult2.rdd.map(x=>x.mkString(",")).saveAsTextFile("/user/training/solution14/employee_hire_table")
+
+--In Hive:
+create database solution14 
+use solution14
+create table employee_hire_table_partitioned(
+  emp_id int,
+  emp_lname varchar(50),
+  emp_fname varchar(50),
+  emp_salary float,
+  emp_age int,
+  emp_city varchar(100),
+  emp_state varchar(10),
+  emp_zip int,
+  emp_dept_id int
+  )
+  partitioned by (hire_year int ,hire_month int)
+   row format delimited fields terminated by ',';
+
+Static partition in this you load single file for every partition:
+
+load data inpath "/user/training/solution14/employee_hire_table" into table employee_hire_table_partitioned partition(hire_year=2011,hire_month=04);
+
+
+Dynamic partition :
+You can use sql to load partition data directly without specifying fiel for each partition.
+
+drop table employee_hire_table_partitioned_dynamic;
+create table employee_hire_table_partitioned_dynamic(
+  emp_id int,
+  emp_lname varchar(50),
+  emp_fname varchar(50),
+  emp_salary float,
+  emp_age int,
+  emp_city varchar(100),
+  emp_state varchar(50),
+  emp_zip varchar(16),
+  emp_dept_id int
+  )
+  partitioned by (joining_year int ,joining_month int)
+   row format delimited fields terminated by ',';
+   
+  
+   insert into employee_hire_table_partitioned_dynamic partition(joining_year,joining_month) select empid,emplname,empfname,empsal,empage,empcity,empstate,empzip,empdeptid,joining_year,joining_month from solution.employee_result;
+
+
+
+Problem 15:
+
+	Data is available in local file system /data/retail_db
+	Source directories: /data/retail_db/orders and /data/retail_db/customers
+	Source delimiter: comma (“,”)
+	Source Columns - orders - order_id, order_date, order_customer_id, order_status
+	Source Columns - customers - customer_id, customer_fname, customer_lname and many more
+	Get the customers who have not placed any orders, sorted by customer_lname and then customer_fname
+	Target Columns: customer_lname, customer_fname
+	Number of files - 1
+	Target Directory: /user/<YOUR_USER_ID>/solutions/solutions02/inactive_customers
+	Target File Format: TEXT
+	Target Delimiter: comma (“, ”)
+	Compression: N/A
+
+--using data frame	
+import scala.io.Source
+var orders_raw=Source.fromFile("/home/training/data/retail_db/orders/part-00000").getLines.toList
+var customers_raw=Source.fromFile("/home/training/data/retail_db/customers/part-00000").getLines.toList
+var orders_rdd=sc.parallelize(orders_raw)
+var customers_rdd=sc.parallelize(customers_raw)
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2),d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+var customers_df=customers_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2))}).toDF("customer_id","customer_fname","customer_lname")
+var inact_cust_df=	customer_df.join(orders_df,customers_df("customer_id")===orders_df("order_customer_id"),"left")
+inact_cust_df.registerTempTable("inactive_customers")
+var sqlresult=sqlContext.sql("select customer_fname,customer_lname from inactive_customers where order_customer_id is null order by customer_lname,customer_fname")
+sqlresult.show
+sqlresult.coalesce(1).rdd.map(x=>x.mkString(", ")).saveAsTextFile("/user/training/solution15/inactive_customer/text")
+
+
+
+--using dataframe and left outer join in query
+
+import scala.io.Source
+var orders_raw=Source.fromFile("/home/training/data/retail_db/orders/part-00000").getLines.toList
+var customers_raw=Source.fromFile("/home/training/data/retail_db/customers/part-00000").getLines.toList
+var orders_rdd=sc.parallelize(orders_raw)
+var customers_rdd=sc.parallelize(customers_raw)
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2),d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+var customers_df=customers_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2))}).toDF("customer_id","customer_fname","customer_lname")
+orders_df.registerTempTable("orders")
+customers_df.registerTempTable("customers")
+var sqlresult=sqlContext.sql("select customer_fname,customer_lname from customers left outer join orders where order_customer_id is null order by customer_lname,customer_fname")
+sqlresult.show
+
+
+
+--scala api
+
+import scala.io.Source
+var orders_raw=Source.fromFile("/home/training/data/retail_db/orders/part-00000").getLines.toList
+var customers_raw=Source.fromFile("/home/training/data/retail_db/customers/part-00000").getLines.toList
+var orders_rdd=sc.parallelize(orders_raw)
+var customers_rdd=sc.parallelize(customers_raw)
+var customers=customers_rdd.map(x=>{var d=x.split(",");(d(0),(d(1),d(2)))})
+var orders=orders_rdd.map(x=>{var d=x.split(",");(d(2),d(0))})
+var inact_cust_join=customers.leftOuterJoin(orders)
+val inactive_customers =inact_cust_join.filter(x=>x._2._2==None).map(x=>x._2).sortByKey();
+inactive_customers.map(rec => rec._1._1+ ", "+ rec._1._2).saveAsTextFile("/user/training/solution15/inactive_customers/text");
+
+
+problem 16:
+•	Data is available in HDFS file system under /user/training/CRIME_DATA/Crimes.csv
+•	Structure of data (ID,Case Number,Date,Block,IUCR,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,FBI Code,X Coordinate,Y Coordinate,Year,Updated On,Latitude,Longitude,Location)
+File format - text file
+•	Delimiter - “,” (use regex while splitting split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1), as there are some fields with comma and enclosed using double quotes.
+•	Get top 3 crime types based on number of incidents in RESIDENCE area using “Location Description”
+•	Store the result in HDFS path /user/<YOUR_USER_ID>/solutions14/RESIDENCE_AREA_CRIMINAL_TYPE_DATA
+•	Output Fields: Crime Type, Number of Incidents
+•	Output File Format: JSON
+•	Output Delimiter: N/A
+•	Output Compression: No
+
+
+var crimeData=sc.textFile("/user/training/CRIME_DATA/Crimes.csv")
+val header = crimeData.first
+val crimeDataWithoutHeader = crimeData.filter(criminalrec => criminalrec != header)
+var  crime_df=crimeDataWithoutHeader.map(x=>{var d=x.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);(d(5),d(7))}).toDF("type","location")
+crime_df.registerTempTable("crimes")
+var sqlresult=sqlContext.sql("select type,count(1) crime_count  from crimes  where location='RESIDENCE' group by type order by crime_count desc limit 3")
+sqlresult.show
+sqlresult.coalesce(1).write.json("/user/training/solutions14/RESIDENCE_AREA_CRIMINAL_TYPES_DATA")   
+
+Problem 17: Use case in a query.
+Case:
+
+select order_id,order_customer_id,case when order_status='CLOSED' then 'order has been closed' when order_status='COMPLETE' then 'order has been completed' else 'risky' end order_status  from orders_partition;
+4	8827	order has been closed
+1	11599	order has been closed
+7	4530	order has been completed
+6	7130	order has been completed
+
+
+
+
+Using Scala Api:
+
+
+
+val crimeData = sc.textFile("/user/training/CRIME_DATA/Crimes.csv")
+val header = crimeData.first
+val crimeDataWithoutHeader = crimeData.filter(criminalrec => criminalrec != header)
+
+val crimeCountForResidence = crimeDataWithoutHeader.
+filter(rec => rec.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1)(7) == "RESIDENCE").
+map(rec => (rec.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1)(5),1)).
+reduceByKey((total,value) => total+value).
+map(rec => (rec._2, rec._1)).
+  sortByKey(false).
+  take(3)
+
+crimeCountForResidence.map(rec => (rec._2, rec._1)).toList.toDF("crime_type", "crime_count").write.json("user/dgadiraju/solutions/solution03/RESIDENCE_AREA_CRIMINAL_TYPE_DATA")
+
+
+
+Problem 18: Convert to parquet data available at /user/training/data/nyse/.
+
+Details - Duration 10 minutes
+Data is available in /user/training/data/nyse/
+Fields (stockticker:string, transactiondate:string, openprice:float, highprice:float, lowprice:float, closeprice:float, volume:bigint)
+Convert file format to parquet
+Save it /user/<YOUR_USER_ID>/nyse_parquet
+Validation
+
+Solution
+
+var nyse_rdd=sc.textFile("/user/training/data/nyse/")
+var nyse_df=nyse_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2).toFloat,d(3).toFloat,d(4).toFloat,d(5).toFloat,d(6).toInt )}).toDF("stockticker","transactiondate","openprice","highprice","lowprice","closeprice","volume")
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+nyse_df.write.parquet("/user/training/solution17/parquets/nyse_parquet")
+
+
+----or use two map function
+
+var nyse_rdd=sc.textFile("/user/training/data/nyse/")
+var nyse_rdd1=nyse_rdd.map(x=>x.split(","))
+var nyse_df=nyse_rdd1.map(d=>(d(0),d(1),d(2).toFloat,d(3).toFloat,d(4).toFloat,d(5).toFloat,d(6).toInt)).toDF("stockticker","transactiondate","openprice","highprice","lowprice","closeprice","volume")
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+nyse_df.write.parquet("/user/training/solution17/parquets/nyse_parquet")
+
+
+
+problem 19: save just first two fields from nyse data set at /user/training/data/nyse/ to another location /user/training/problem19/nyse_two_fields
+
+var nyse_rdd=sc.textFile("/user/training/data/nyse/")
+var nyse_rdd1=nyse_rdd.map(x=>x.split(","))
+var nyse_rdd=nyse_rdd1.map(d=>(d(0),d(1),d(2).toFloat,d(3).toFloat,d(4).toFloat,d(5).toFloat,d(6).toInt))
+nyse_rd.map(d=>(d._1+"\t"+d._2)).saveAsTextFile("/user/training/problem19/nyse_two_fields")
+
+
+
+Problem 20:
+
+task 1: export and load the only emp_id | emp_lname | emp_fname | emp_dob    | age  | sal  | emp_doj  in mysql table emp_export_test in database cca175problem1. from file having structure as mentioned below 
+with columns emp_id,emp_fname,emp_lname,emp_age,emp_sal,emp_dob,emp_city,emp_state,emp_zip,emp_deptid
+
+[training@localhost conf]$ hdfs dfs -cat /user/training/practice_data/employee/employee
+101	sarvesh	gupta	32	1000	2015-04-16	st.louis	MO	63042	10
+102	manisha	gupta		2000	2017-07-02	maryland heights	MO	63043	20
+103	arnav	gupta	38	6200	2014-05-15	new delhi	DL	63044	10
+104	Ramesh		54	8500	2010-08-11	knoxville	TN	37019	30
+105	Jigar	sharma	40	4562	2011-05-25	st.Louis	MO	63042	20	  	
+106	Abhi	sharma	30	4552	2011-04-25	st.Louis	MO	63042	80	
+
+
+
+use cca175problem1
+select * from emp_export_test;
+alter table emp_export_test add constraint pk1 primary key(emp_id);
+
+
+sqoop export --connect jdbc:mysql://localhost/cca175problem1 --username root --export-dir /user/training/practice_data/employee/  \
+--table emp_export_test --input-fields-terminated-by "\t" --input-null-string "NA" --input-null-non-string -1 \
+--columns "emp_id,emp_fname,emp_lname,age,sal,emp_dob" -m 1
+
+
+mysql> select * from emp_export_test;
++--------+-----------+-----------+------------+------+------+---------+
+| emp_id | emp_lname | emp_fname | emp_dob    | age  | sal  | emp_doj |
++--------+-----------+-----------+------------+------+------+---------+
+|    101 | gupta     | sarvesh   | 2015-04-16 |   32 | 1000 | NULL    |
+|    102 | gupta     | manisha   | 2017-07-02 | NULL | 2000 | NULL    |
+|    103 | gupta     | arnav     | 2014-05-15 |   38 | 6200 | NULL    |
+|    104 |           | Ramesh    | 2010-08-11 |   54 | 8500 | NULL    |
+|    105 | sharma    | Jigar     | 2011-05-25 |   40 | 4562 | NULL    |
+|    106 | sharma    | Abhi      | 2011-04-25 |   30 | 4552 | NULL    |
++--------+-----------+-----------+------------+------+------+---------+
+6 rows in set (0.00 sec)
+
+
+task 2: delete all rows except with emp_id 105 and 106 and update sal=0 and just run sqoop job to update the salary no new records insert.
+
+mysql> delete from emp_export_test where emp_id not in (105,106);
+Query OK, 4 rows affected (0.13 sec)
+
+mysql> commit;
+Query OK, 0 rows affected (0.00 sec)
+
+
+
+update emp_export_test set sal=0;
+
+mysql> update emp_export_test set sal=0;
+Query OK, 2 rows affected (0.00 sec)
+Rows matched: 2  Changed: 2  Warnings: 0
+
+mysql> commit;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> select * from emp_export_test;
++--------+-----------+-----------+---------+------+------+---------+
+| emp_id | emp_lname | emp_fname | emp_dob | age  | sal  | emp_doj |
++--------+-----------+-----------+---------+------+------+---------+
+|    105 | Jigar     | sharma    | 40.0    |   40 |    0 | NULL    |
+|    106 | Abhi      | sharma    | 30.0    |   30 |    0 | NULL    |
++--------+-----------+-----------+---------+------+------+---------+
+2 rows in set (0.00 sec)
+
+
+sqoop export --connect jdbc:mysql://localhost/cca175problem1 --username root --export-dir /user/training/practice_data/employee/  --table emp_export_test --input-fields-terminated-by "\t" \
+--input-null-string "NA" --input-null-non-string -1 --update-mode updateonly --columns "emp_id,emp_fname,emp_lname,sal,emp_dob" -m 1  --update-key emp_id
+
+
+mysql> select * from emp_export_test;
++--------+-----------+-----------+---------+------+------+---------+
+| emp_id | emp_lname | emp_fname | emp_dob | age  | sal  | emp_doj |
++--------+-----------+-----------+---------+------+------+---------+
+|    105 | Jigar     | sharma    | 40.0    |   40 | 4562 | NULL    |
+|    106 | Abhi      | sharma    | 30.0    |   30 | 4552 | NULL    |
++--------+-----------+-----------+---------+------+------+---------+
+2 rows in set (0.00 sec)
+
+
+
+task3: delete all rows except with emp_id 105 and 106 and update sal=0 and just run sqoop job to update the salary and insert new records .
+
+
+mysql> delete from emp_export_test where emp_id not in (105,106);
+Query OK, 4 rows affected (0.03 sec)
+
+mysql> update emp_export_test set sal=0;
+Query OK, 2 rows affected (0.00 sec)
+Rows matched: 2  Changed: 2  Warnings: 0
+
+mysql> commit;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> select * from emp_export_test;
++--------+-----------+-----------+---------+------+------+---------+
+| emp_id | emp_lname | emp_fname | emp_dob | age  | sal  | emp_doj |
++--------+-----------+-----------+---------+------+------+---------+
+|    105 | sharma    | Jigar     | 4562    |   40 |    0 | NULL    |
+|    106 | sharma    | Abhi      | 4552    |   30 |    0 | NULL    |
++--------+-----------+-----------+---------+------+------+---------+
+2 rows in set (0.00 sec)
+
+
+
+sqoop export --connect jdbc:mysql://localhost/cca175problem1 --username root --export-dir /user/training/practice_data/employee/  --table emp_export_test --input-fields-terminated-by "\t" \
+--input-null-string "NA" --input-null-non-string -1 --update-mode allowinsert --columns "emp_id,emp_fname,emp_lname,sal,emp_dob" -m 1  --update-key emp_id
+
+
+
+mysql> select * from emp_export_test;
++--------+-----------+-----------+---------+------+------+---------+
+| emp_id | emp_lname | emp_fname | emp_dob | age  | sal  | emp_doj |
++--------+-----------+-----------+---------+------+------+---------+
+|    104 |           | Ramesh    | 8500    | NULL |   54 | NULL    |
+|    103 | gupta     | arnav     | 6200    | NULL |   38 | NULL    |
+|    102 | gupta     | manisha   | 2000    | NULL | NULL | NULL    |
+|    101 | gupta     | sarvesh   | 1000    | NULL |   32 | NULL    |
+|    105 | sharma    | Jigar     | 4562    |   40 |   40 | NULL    |
+|    106 | sharma    | Abhi      | 4552    |   30 |   30 | NULL    |
++--------+-----------+-----------+---------+------+------+---------+
+6 rows in set (0.00 sec)
+
+
+
+
+Problem 21:
+
+Duration: 20 to 30 minutes
+
+Tables should be in hive database - <YOUR_USER_ID>_retail_db_txt
+orders
+order_items
+customers
+Time to create database and tables need not be counted. Make sure to go back to Spark SQL module and create tables and load data
+Get details of top 5 customers by revenue for each month
+We need to get all the details of the customer along with month and revenue per month
+Data need to be sorted by month in ascending order and revenue per month in descending order
+Create table top5_customers_per_month in <YOUR_USER_ID>_retail_db_txt
+Insert the output into the newly created table
+
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+var orderitems_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+var customers_rdd=sc.textFile("/user/training/data/retail_db/customers")
+
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0),d(1),d(2),d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+
+var order_items_df=orderitems_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat)}).toDF(("order_item_id","order_item_order_id","order_item_product_id","order_item_quantity","order_item_subtotal","order_item_product_price"))
+
+var customers_df=customers_rdd.map(x=>{var d=x.split(",");
+(d(0).toInt,d(1).toString,d(2).toString,d(3).toString,d(4).toString,d(5).toString,d(6).toString,d(7).toString,d(8).toString)}).toDF("customer_id","customer_fname","customer_lname","customer_email","customer_password","customer_street","customer_city","customer_state","customer_zipcode")
+
+
+orders_df.registerTempTable("orders1")
+order_items_df.registerTempTable("orderitems1")
+customers_df.registerTempTable("customers1")
+
+
+var sqlresult=sqlContext.sql("select * from(select customer_id,customer_fname,customer_lname,customer_email,customer_password,customer_street,customer_city,customer_state,customer_zipcode,month,total_amount_per_month,dense_rank() over (partition by month order by total_amount_per_month desc) as rnk from (select distinct * from(select c.customer_id,c.customer_fname,c.customer_lname,c.customer_email,c.customer_password,c.customer_street,c.customer_city,c.customer_state,c.customer_zipcode,substr(o.order_date,1,7) month,sum(order_item_subtotal) total_amount_per_month from customers1 c join orders1 o on o.order_customer_id=c.customer_id join orderItems1 oi on o.order_id=oi.order_item_order_id group by c.customer_id,c.customer_id,customer_fname,customer_lname,customer_email,customer_password,customer_street,customer_city,customer_state,customer_zipcode,substr(o.order_date,1,7))q)p)e where rnk <=5 order by month,total_amount_per_month desc")
+
+
+sqlresult.saveAsTable("problem21.top_5_customer")
+
+
+Problem 22:
+
+find all the customer ,who purchased order in 2013-07 as well in 2014-07
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+
+
+scala> var orders_2013=orders_rdd.filter(x=>x.split(",")(1).contains("2013-07")).map(x=>x.split(",")(2))
+orders_2013: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[36] at map at <console>:29
+
+scala> var orders_2014=orders_rdd.filter(x=>x.split(",")(1).contains("2014-07")).map(x=>x.split(",")(2))
+orders_2014: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[38] at map at <console>:29
+
+scala> var orders=orders_2013.intersection(orders_2014).distinct
+orders: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[47] at distinct at <console>:33
+
+scala> orders.count
+res9: Long = 438                                                                
+
+scala> orders.take(5).foreach(println)
+9667
+2897
+10942
+1821
+5885
+
+
+
+
+scala> var orders=orders_2013.union(orders_2014).distinct
+orders: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[51] at distinct at <console>:33
+
+scala> orders.count
+res11: Long = 4837  
+
+problem 23: save the above rdd in parquet file:
+
+scala> var orders_2014=orders_rdd.filter(x=>x.split(",")(1).contains("2014-07")).map(x=>(x.split(",")(2),x.split(",")(3)))
+orders_2014: org.apache.spark.rdd.RDD[(String, String)] = MapPartitionsRDD[33] at map at <console>:29
+
+scala> var orders_2013=orders_rdd.filter(x=>x.split(",")(1).contains("2013-07")).map(x=>(x.split(",")(2),x.split(",")(3)))
+orders_2013: org.apache.spark.rdd.RDD[(String, String)] = MapPartitionsRDD[35] at map at <console>:29
+
+scala> var orders=orders_2013.intersection(orders_2014).distinct
+orders: org.apache.spark.rdd.RDD[(String, String)] = MapPartitionsRDD[44] at distinct at <console>:33
+
+scala> var order=orders.map(x=>(x._1,x._2)).toDF()
+order: org.apache.spark.sql.DataFrame = [_1: string, _2: string]
+
+scala> order.show
++-----+---------------+
+|   _1|             _2|
++-----+---------------+
+| 2765|     PROCESSING|
+| 5003|       COMPLETE|
+| 8173|       COMPLETE|
+|11662|       COMPLETE|
+|10216|PENDING_PAYMENT|
+| 6174|     PROCESSING|
+|  827|PENDING_PAYMENT|
+| 9715|       COMPLETE|
+|11983|       COMPLETE|
+| 9117|       COMPLETE|
+|  103|PENDING_PAYMENT|
+| 8829|PENDING_PAYMENT|
+| 7657|       COMPLETE|
+| 4562|       COMPLETE|
+| 4632|       COMPLETE|
+|   32|        PENDING|
+| 5244|        ON_HOLD|
+| 5783|       COMPLETE|
+| 5012|PENDING_PAYMENT|
+| 5590|        PENDING|
++-----+---------------+
+only showing top 20 rows
+
+
+orders.map(x=>(x._1,x._2)).toDF().write.parquet("/user/training/common_customer_orders")
+
+scala> orders.map(x=>(x._1+"\t"+x._2)).saveAsTextFile("/user/training/common_customer_orders_txt")
+
+
+
+Problem24:Read the saved parquetfile above and save as textfile
+
+scala> var orders=sqlContext.read.parquet("/user/training/common_customer_orders")
+orders: org.apache.spark.sql.DataFrame = [_1: string, _2: string]
+
+scala> orders.show
++-----+---------------+
+|   _1|             _2|
++-----+---------------+
+| 2765|     PROCESSING|
+| 5003|       COMPLETE|
+| 8173|       COMPLETE|
+| 5590|        PENDING|
++-----+---------------+
+only showing top 20 rows
+
+
+scala> var order_rdd=orders.rdd.map(x=>(x(0)+","+x(1)))
+order_rdd: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[60] at map at <console>:27
+
+scala> order_rdd.take(4).foreach(println)
+2765,PROCESSING
+5003,COMPLETE
+8173,COMPLETE
+11662,COMPLETE
+
+scala> var order_rdd=orders.rdd.map(x=>x.mkString(","))
+order_rdd: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[61] at map at <console>:27
+
+scala> order_rdd.take(4).foreach(println)
+2765,PROCESSING
+5003,COMPLETE
+8173,COMPLETE
+11662,COMPLETE
+
+scala> order_rdd.saveAsTextFile("/user/training/common_orders_txt")
+
+
+
+Problem 25: read the parquet file at /user/training/common_customer_orders and count the number of customers by status and save as 
+avro file in snappy compressed format.
+
+
+scala> var orders_df=sqlContext.read.parquet("/user/training/common_customer_orders").toDF("cust_id","status")
+orders_df: org.apache.spark.sql.DataFrame = [cust_id: string, status: string]
+
+scala> orders_df.registerTempTable("orders_cust")
+
+scala> var sqlresult=sqlContext.sql("select count(1),status from orders_cust  group by status")
+sqlresult: org.apache.spark.sql.DataFrame = [_c0: bigint, status: string]
+
+scala> var sqlresult=sqlContext.sql("select count(1) as cust_count ,status from orders_cust  group by status")
+sqlresult: org.apache.spark.sql.DataFrame = [cust_count: bigint, status: string]
+
+scala> sqlresult.show
++----------+---------------+                                                    
+|cust_count|         status|
++----------+---------------+
+|         5|        PENDING|
+|         4|        ON_HOLD|
+|         1| PAYMENT_REVIEW|
+|        25|PENDING_PAYMENT|
+|        15|     PROCESSING|
+|         5|         CLOSED|
+|        60|       COMPLETE|
++----------+---------------+
+
+
+scala> import com.databricks.spark.avro._
+import com.databricks.spark.avro._
+
+scala> sqlresult.write.avro("/user/training/customer_count_common/avro")
+                                                                                
+scala> sqlContext.setConf("spark.sql.avro.compression.codec","gzip")
+
+scala> sqlresult.write.avro("/user/training/customer_count_common/avro_gzip")
+18/04/16 21:09:30 ERROR avro.AvroRelation: compression gzip is not supported
+                                                                                
+
+Problem 26:
+
+Using sqoop, import orders table into hdfs to folders /user/training/problems1/orders. File should be loaded as Avro File and use snappy compression
+Using sqoop, import order_items  table into hdfs to folders /user/training/problems1/order-items. Files should be loaded as avro file and use snappy compression
+Using Spark Scala load data at /user/training/problems1/orders and /user/training/problems1/orders-items items as dataframes. 
+Expected Intermediate Result: Order_Date , Order_status, total_orders, total_amount. In plain english, please find total orders and total amount per status per day. The result should be sorted by order date in descending, order status in ascending and total amount in descending and total orders in ascending. Aggregation should be done using below methods. However, sorting can be done using a dataframe or RDD. Perform aggregation in each of the following ways
+a). Just by using Data Frames API - here order_date should be YYYY-MM-DD format
+b). Using Spark SQL  - here order_date should be YYYY-MM-DD format
+c). By using combineByKey function on RDDS -- No need of formatting order_date or total_amount
+ Store the result as parquet file into hdfs using gzip compression under folder
+/user/training/problems1/result4a-gzip
+/user/training/problems1/result4b-gzip
+/user/training/problems1/result4c-gzip
+ Store the result as parquet file into hdfs using snappy compression under folder
+/user/training/problems1/result4a-snappy
+/user/training/problems1/result4b-snappy
+/user/training/problems1/result4c-snappy
+Store the result as CSV file into hdfs using No compression under folder
+/user/training/problems1/result4a-csv
+/user/training/problems1/result4b-csv
+/user/training/problems1/result4c-csv
+create a mysql table named result and load data from /user/training/problems1/result4b-csv to mysql table named result_problems1 
+
+
+sqoop import --connect jdbc:mysql://localhost/retail_database  --username root --table orders --target-dir /user/training/problems1/orders --as-avrodatafile -m 1 --compress --compression-codec org.apache.hadoop.io.compress.SnappyCodec
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --table order_items --target-dir  /user/training/problems1/order-items --as-avrodatafile --compress --compression-codec org.apache.hadoop.io.compress.SnappyCodec -m 1
+
+
+var orders_df=sqlContext.read.avro("/user/training/problems1/orders")
+var orderitems_df=sqlContext.read.avro("/user/training/problems1/order-items")
+var orderjoined=orders_df.join(orderitems_df,orders_df("order_id")===orderitems_df("order_item_order_id"))
+orderjoined.registerTempTable("ord_orditems")
+var sqlresult=sqlContext.sql("select  to_date(from_unixtime(cast (order_date/1000 as bigint))) order_date_formatted ,order_status,count(1) as total_orders,cast(sum(order_item_subtotal) as decimal(10,2))as total_amount from ord_orditems group by to_date(from_unixtime(cast (order_date/1000 as bigint))),order_status order by order_date_formatted desc,order_status asc ,total_amount desc,total_orders asc")
+
+import com.databricks.spark.avro._;
+sqlContext.setConf("spark.sql.parquet.compression.codec","gzip")
+sqlresult.write.parquet("/user/training/problems1/result4b-gzip")
+
+sqlContext.setConf("spark.sql.parquet.compression.codec","snappy")
+sqlresult.write.parquet("/user/training/problems1/result4b-snappy")
+
+sqlresult.rdd.map(x=>x.mkString(",")).saveAsTextFile("/user/training/problems1/result4b-csv")
+OR
+sqlresult.map(x=>x(0)+","+x(1)+","+x(2)+","+x(3)).saveAsTextFile("/user/training/problems1/method2/result4b-csv")
+
+
+mysql:
+
+use retail_db;
+create table retail_db.result_problems1(order_status varchar(255) not null,order_date varchar(255) not null, total_orders int, total_amount numeric, constraint pk_order_result primary key (order_date,order_status));
+
+
+sqoop export --connect jdbc:mysql://localhost/retail_db --username root --table result_problems1 --export-dir /user/training/problems1/result4b-csv --columns "order_date,order_status,total_orders,total_amount" --input-fields-terminated-by ","
+
+
+Problem 27:
+
+Using sqoop copy data available in mysql products table to folder /user/cloudera/products on hdfs as text file. columns should be delimited by pipe '|'
+move all the files from /user/cloudera/products folder to /user/cloudera/problem2/products folder
+Change permissions of all the files under /user/cloudera/problem2/products such that owner has read,write and execute permissions, group has read and write permissions whereas others have just read and execute permissions
+read data in /user/cloudera/problem2/products and do the following operations using a) dataframes api b) spark sql c) RDDs aggregateByKey method. Your solution should have three sets of steps. Sort the resultant dataset by category id
+filter such that your RDD\DF has products whose price is lesser than 100 USD
+on the filtered data set find out the higest value in the product_price column under each category
+on the filtered data set also find out total products under each category
+on the filtered data set also find out the average price of the product under each category
+on the filtered data set also find out the minimum price of the product under each category
+store the result in avro file using snappy compression under these folders respectively
+/user/cloudera/problem2/products/result-df
+/user/cloudera/problem2/products/result-sql
+/user/cloudera/problem2/products/result-rdd
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --table products --target-dir /user/training/products_data --fields-terminated-by "|" --as-textfile --delete-target-dir
+
+hdfs dfs -mv /user/training/products_data/*  /user/training/problems2/products/
+hdfs dfs -chmod 765 /user/training/problems2/products/*
+
+
+var products_rdd=sc.textFile("/user/training/problems2/products")
+var products_df=products_rdd.map(x=>{var d=x.split('|');(d(0).toInt,d(1).toInt,d(2).toString,d(3).toString,d(4).toFloat,d(5).toString)}).toDF("product_id","product_category_id","product_name","product_description","product_price","product_image")
+products_df.registerTempTable("products")
+var sqlresult1=sqlContext.sql("select product_category_id,max(product_price) as max_price,count(distinct(product_id)) as total_products,cast(avg(product_price) as decimal(10,2)) as average_price,min(product_price) as min_price from products where product_price<100 group by product_category_id  order by product_category_id desc")
+sqlresult1.show
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+import com.databricks.spark.avro._
+sqlresult1.write.avro("/user/training/problems2/products/result-sql");
+
+--if you have rdd to convert and save as avro use todf
+
+rddResult.toDF().write.avro("/user/cloudera/problem2/products/result-rdd");;
+
+
+
+
+Problem 28:
+
+Problem 4:
+Import orders table from mysql as text file to the destination /user/training/problems5/text. Fields should be terminated by a tab character ("\t") character and lines should be terminated by new
+line character ("\n"). 
+Import orders table from mysql  into hdfs to the destination /user/training/problems5/avro. File should be stored as avro file.
+Import orders table from mysql  into hdfs  to folders /user/training/problems5/parquet. File should be stored as parquet file.
+
+Transform/Convert data-files at /user/training/problems5/avro and store the converted file at the following locations and file formats
+
+save the data to hdfs using snappy compression as parquet file at /user/training/problems5/parquet-snappy-compress
+save the data to hdfs using gzip compression as text file at /user/training/problems5/text-gzip-compress
+save the data to hdfs using no compression as sequence file at /user/training/problems5/sequence
+save the data to hdfs using snappy compression as text file at /user/training/problems5/text-snappy-compress
+
+Transform/Convert data-files at /user/training/problems5/parquet-snappy-compress and store the converted file at the following locations and file formats
+save the data to hdfs using no compression as parquet file at /user/training/problems5/parquet-no-compress
+save the data to hdfs using snappy compression as avro file at /user/training/problems5/avro-snappy
+
+
+
+
+Transform/Convert data-files at /user/training/problems5/avro-snappy and store the converted file at the following locations and file formats
+save the data to hdfs using no compression as json file at /user/training/problems5/json-no-compress
+save the data to hdfs using gzip compression as json file at /user/training/problems5/json-gzip
+
+
+Transform/Convert data-files at  /user/training/problems5/json-gzip and store the converted file at the following locations and file formats
+save the data to as comma separated text using gzip compression at   /user/training/problems5/csv-gzip
+Using spark access data at /user/training/problems5/sequence and stored it back to hdfs using no compression as ORC file to HDFS to destination /user/training/problems5/orc 
+
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --table orders --target-dir /user/training/problems5/text --fields-terminated-by "\t" --lines-terminated-by "\n" --as-textfile
+
+sqoop import --connect jdbc:mysq;//localhost/retail_database  --username root --table orders --target-dir /user/training/problems5/avro --as-avrodatafile
+
+sqoop import --connect jdbc:mysq;//localhost/retail_database  --username root --table orders --target-dir /user/training/problems5/parquet --as-parquetfile
+
+
+var orders_df=sqlContext.read.avro("/user/training/problems5/avro")
+sqlContext.setConf("spark.sql.parquet.compression.codec","snappy")
+orders_df.repartition(1).write.parquet("/user/training/problems5/parquet-snappy-compress")
+
+
+
+orders_df.rdd.map(x=>x.mkString("\t")).saveAsTextFile("/user/training/problems5/text-gzip-compress",classOf[org.apache.hadoop.io.compress.GzipCodec])
+
+orders_df.map(x=> x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3)).saveAsTextFile("/user/cloudera/problem5/text-gzip-compress",classOf[org.apache.hadoop.io.compress.GzipCodec]);
+
+orders_df.map(x=>(x(0).toString,x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3))).saveAsSequenceFile("/user/training/problems5/sequence");
+
+orders_df.map(x=> x(0)+"\t"+x(1)+"\t"+x(2)+"\t"+x(3)).saveAsTextFile("/user/training/problems5/text-snappy-compress",classOf[org.apache.hadoop.io.compress.SnappyCodec]);
+
+
+sqoop import --connect jdbc:mysql://localhost/retail_database -username root --table orders --as-textfile --compress --compression-codec org.apache.hadoop.io.compress.SnappyCodec --target-dir /user/training/problems5/text-snappy-compress -m 1
+
+
+
+var orders_pqdf=sqlContext.read.parquet("/user/training/problems5/parquet-snappy-compress")
+sqlContext.setConf("spark.sql.parquet.compression.codec","uncompressed")
+orders_pqdf.write.parquet("/user/training/problems5/parquet-no-compress")
+
+sqlContext.setConf("spark.sql.avro.compression.codec","snappy")
+orders_pqdf.write.avro("/user/training/problems5/avro-snappy")
+
+var orders_avdf=sqlContext.read.avro("/user/training/problems5/avro-snappy")
+sqlContext.setConf("spark.sql.json.compression.codec","uncompressed")
+orders_avdf.write.json("/user/training/problems5/json-no-compress")
+
+sqlContext.setConf("spark.sql.json.compression.codec","gzip")
+orders_avdf.write.json("/user/training/problems5/json-gzip")
+
+
+
+
+
+Transform/Convert data-files at  /user/training/problems5/json-gzip and store the converted file at the following locations and file formats
+save the data to as comma separated text using gzip compression at   /user/training/problems5/csv-gzip
+Using spark access data at /user/training/problems5/sequence and stored it back to hdfs using no compression as ORC file to HDFS to destination /user/training/problems5/orc 
+
+
+var jsonfile=sqlContext.read.json("/user/training/problems5/json-gzip")
+jsonfile.rdd.map(x=>x.mkString(",")).saveAsTextFile("/user/training/problems5/csv-gzip",classOf[org.apache.hadoop.io.compress.GzipCodec])
+
+
+var seqdata=sc.sequenceFile("/user/training/problems5/sequence",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text])
+seqdata.map(x=>{var d=x._2.toString.split("\t");(d(0),d(1),d(2),d(3),d(4))}).toDF().write.orc("/user/training/problems5/orc")
+
+
+//In spark shell do below
+var seqData = sc.sequenceFile("/user/cloudera/problem5/sequence/",classOf[org.apache.hadoop.io.Text],classOf[org.apache.hadoop.io.Text]);
+seqData.map(x=>{var d = x._2.toString.split("\t"); (d(0),d(1),d(2),d(3))}).toDF().write.orc("/user/cloudera/problem5/orc");
+
+
+
+
+
+
+Problem 29: 
+
+task 1 :read emp file at /user/training/practice_data/employee/ and get avg of salary departmentwise .
+
+
+scala> var emp_rdd=sc.textFile("/user/training/practice_data/employee/")
+emp_rdd: org.apache.spark.rdd.RDD[String] = /user/training/practice_data/employee/ MapPartitionsRDD[86] at textFile at <console>:27
+
+scala> var emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0).toInt,d(1).toString,d(2).toString,d(3).toString,d(4).toInt,d(5).toString,d(6).toString,d(7).toString,d(8).toString,d(9).toInt)}).toDF("emp_id","emp_fname","emp_lname","emp_age","emp_sal","emp_dob","emp_city","emp_state","emp_zip","emp_did")
+emp_df: org.apache.spark.sql.DataFrame = [emp_id: int, emp_fname: string, emp_lname: string, emp_age: string, emp_sal: int, emp_dob: string, emp_city: string, emp_state: string, emp_zip: string, emp_did: int]
+
+scala> emp_df.show
++------+---------+---------+-------+-------+----------+----------------+---------+-------+-------+
+|emp_id|emp_fname|emp_lname|emp_age|emp_sal|   emp_dob|        emp_city|emp_state|emp_zip|emp_did|
++------+---------+---------+-------+-------+----------+----------------+---------+-------+-------+
+|   101|  sarvesh|    gupta|     32|   1000|2015-04-16|        st.louis|       MO|  63042|     10|
+|   102|  manisha|    gupta|       |   2000|2017-07-02|maryland heights|       MO|  63043|     20|
+|   103|    arnav|    gupta|     38|   6200|2014-05-15|       new delhi|       DL|  63044|     10|
+|   104|   Ramesh|         |     54|   8500|2010-08-11|       knoxville|       TN|  37019|     30|
+|   105|    Jigar|   sharma|     40|   4562|2011-05-25|        st.Louis|       MO|  63042|     20|
+|   106|     Abhi|   sharma|     30|   4552|2011-04-25|        st.Louis|       MO|  63042|     80|
++------+---------+---------+-------+-------+----------+----------------+---------+-------+-------+
+
+
+
+scala> emp_df.registerTempTable("employee")
+
+scala> var sqlresult=sqlContext.sql("select emp_did,cast(avg(emp_sal) as decimal(10,2)) as avg_sal from employee group by emp_did")
+sqlresult: org.apache.spark.sql.DataFrame = [emp_did: int, avg_sal: decimal(10,2)]
+
+scala> sqlresult.show
++-------+-------+                                                               
+|emp_did|avg_sal|
++-------+-------+
+|     80|4552.00|
+|     10|3600.00|
+|     20|3281.00|
+|     30|8500.00|
++-------+-------+
+
+
+
+task 2: read emp file at /user/training/practice_data/employee/ and department file at /user/training/practice_data/department/ 
+get avg of salary departmentwise and show deptname and average of salary in the depart.
+
+scala> var dept_rdd=sc.textFile("/user/training/practice_data/department/")
+dept_rdd: org.apache.spark.rdd.RDD[String] = /user/training/practice_data/department/ MapPartitionsRDD[118] at textFile at <console>:27
+
+scala> dept_rdd.take(4).foreach(println)
+10	Sales
+20	IT
+30	Accounts
+40	HR
+
+scala> var dept_df=dept_rdd.map(x=>{var d=x.split("\t");(d(0).toInt,d(1).toString)}).toDF("dept_id","dept_name")
+dept_df: org.apache.spark.sql.DataFrame = [dept_id: int, dept_name: string]
+
+scala> dept_df.show
++-------+---------+
+|dept_id|dept_name|
++-------+---------+
+|     10|    Sales|
+|     20|       IT|
+|     30| Accounts|
+|     40|       HR|
++-------+---------+
+
+
+scala> dept_df.registerTempTable("department")
+
+scala> var sqlresult=sqlContext.sql("select d.dept_name,cast(avg(emp_sal) as decimal(10,2)) as avg_sal from employee e inner join department d on e.emp_did=d.dept_id group by dept_name")
+sqlresult: org.apache.spark.sql.DataFrame = [dept_name: string, avg_sal: decimal(10,2)]
+
+scala> sqlresult.show
++---------+-------+                                                             
+|dept_name|avg_sal|
++---------+-------+
+|       IT|3281.00|
+|    Sales|3600.00|
+| Accounts|8500.00|
++---------+-------+
+
+
+scala> var sqlresult=sqlContext.sql("select d.dept_name,cast(avg(emp_sal) as decimal(10,2)) as avg_sal from employee e left outer join department d on e.emp_did=d.dept_id group by dept_name")
+sqlresult: org.apache.spark.sql.DataFrame = [dept_name: string, avg_sal: decimal(10,2)]
+
+scala> sqlresult.show
++---------+-------+                                                             
+|dept_name|avg_sal|
++---------+-------+
+|       IT|3281.00|
+|    Sales|3600.00|
+| Accounts|8500.00|
+|     null|4552.00|
++---------+-------+
+
+task 3: read emp file at /user/training/practice_data/employee/ and department file at /user/training/practice_data/department/ 
+get avg of salary departmentwise and show deptname and average of salary in the depart.replace deptname with unknown if there is no 
+matching department
+
+
+scala> var sqlresult=sqlContext.sql("select nvl(d.dept_name,'unknown') dept_name,cast(avg(emp_sal) as decimal(10,2)) as avg_sal from employee e left outer join department d on e.emp_did=d.dept_id group by dept_name")
+sqlresult: org.apache.spark.sql.DataFrame = [dept_name: string, avg_sal: decimal(10,2)]
+
+scala> sqlresult.show
++---------+-------+                                                             
+|dept_name|avg_sal|
++---------+-------+
+|       IT|3281.00|
+|    Sales|3600.00|
+| Accounts|8500.00|
+|  unknown|4552.00|
++---------+-------+
+
+
+task 4: concatenate dept_id and dept_name with space between and find avg salary in the department.
+
+scala> var sqlresult=sqlContext.sql("select concat(concat(nvl(d.dept_name,'unknown'),' '),dept_id) deptartment,cast(avg(emp_sal) as decimal(10,2)) as avg_sal from employee e left outer join department d on e.emp_did=d.dept_id group by concat(concat(nvl(d.dept_name,'unknown'),' '),dept_id)")
+sqlresult: org.apache.spark.sql.DataFrame = [deptartment: string, avg_sal: decimal(10,2)]
+
+scala> sqlresult.show
++-----------+-------+                                                           
+|deptartment|avg_sal|
++-----------+-------+
+|Accounts 30|8500.00|
+|      IT 20|3281.00|
+|       null|4552.00|
+|   Sales 10|3600.00|
++-----------+-------+
+
+
+problem 30: Import  all order_id,order_total order_status where order_status is COMPLETE and CLOSED 
+
+sqoop import --connect jdbc:mysql://localhost/retail_database --username root --query "select order_id,order_status,sum(order_item_subtotal) order_total from orders o join order_items oi on o.order_id=oi.order_item_order_id where order_status in ('COMPLETE','CLOSED') and \$CONDITIONS group by order_id,order_status" --target-dir /user/training/order_query -m 1
+
+
+
+
+
+Scenario 30:find dept_name and it's total salary.
+
+scala> var emp_rdd=sc.textFile("/user/training/practice_data/employee/")
+emp_rdd: org.apache.spark.rdd.RDD[String] = /user/training/practice_data/employee/ MapPartitionsRDD[24] at textFile at <console>:27
+
+scala> var emp_df=emp_rdd.map(x=>{var d=x.split("\t");(d(0),d(1),d(2),d(4),d(9))}).toDF("eid","fname","lname","salary","e_did")
+emp_df: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string]
+
+scala> var dept_rdd=sc.textFile("/user/training/practice_data/department/")
+dept_rdd: org.apache.spark.rdd.RDD[String] = /user/training/practice_data/department/ MapPartitionsRDD[28] at textFile at <console>:27
+
+scala> var dept_df=dept_rdd.map(x=>{var d=x.split("\t");(d(0),d(1))}).toDF("d_did","deptname")
+dept_df: org.apache.spark.sql.DataFrame = [d_did: string, deptname: string]
+
+scala> var join_df=emp_df.join(dept_df,emp_df("e_did")===dept_df("d_did"))
+join_df: org.apache.spark.sql.DataFrame = [eid: string, fname: string, lname: string, salary: string, e_did: string, d_did: string, deptname: string]
+
+scala> join_df.registerTempTable("emp_dept")
+
+scala> sqlContext.sql("select deptname,sum(salary) from emp_dept group by deptname")
+res5: org.apache.spark.sql.DataFrame = [deptname: string, _c1: double]
+
+scala> sqlContext.sql("select deptname,sum(salary) as total_sal from emp_dept group by deptname")
+res6: org.apache.spark.sql.DataFrame = [deptname: string, total_sal: double]
+
+scala> sqlContext.sql("select deptname,sum(salary) as total_sal from emp_dept group by deptname").show
++--------+---------+                                                            
+|deptname|total_sal|
++--------+---------+
+|      IT|   6562.0|
+|   Sales|   7200.0|
+|Accounts|   8500.0|
++--------+---------+

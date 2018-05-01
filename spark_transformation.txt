@@ -1,0 +1,421 @@
+spark-shell --master yarn --packages com.databricks:spark-avro_2.10:2.0.1
+******Transformation*************
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+
+*****************get total of sales for order_id 2**************
+spark-shell --master local[2] -- num-executor 2 --executor-memory 512 --spark.ui.port=4041
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+
+****filter**********
+var order_items_filter=order_items_rdd.filter(x=>(x.split(",")(1).toInt==2 || x.split(",")(1).toInt==4))
+
+****reducyByKey and Map**********
+
+var order_itemtotal=order_items_filter.map(x=>(x.split(",")(1).toInt,x.split(",")(4).toFloat)).reduceByKey((a,b)=>a+b)
+order_itemtotal.take(5).foreach(println)
+
+--to round
+var order_itemtotal=order_items_filter.map(x=>(x.split(",")(1).toInt,x.split(",")(4).toFloat.round)).reduceByKey((a,b)=>a+b)
+order_itemtotal.take(5).foreach(println)
+
+--count
+order_itemtotal.count
+
+
+************Join*********************
+
+**Join RDD
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+var orders=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,x)})
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+var order_items=order_items_rdd.map(x=>{var d=x.split(",");(d(1).toInt,x)})
+
+var order_joined=orders.join(order_items)
+
+
+**Join Dframe
+
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1),d(2).toInt,d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+var order_items_df=order_items_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat)}).toDF("order_item_id","order_item_order_id","order_item_product_id","order_item_quantity","order_item_subtotal","order_item_product_price")
+
+var order_joined=orders_df.join(order_items_df,orders_df("order_id")===order_items_df("order_item_order_id"))
+
+
+Example: to find inactive customer
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+var orders=orders_rdd.map(x=>{var d=x.split(",");(d(2).toInt,d(0).toInt)})
+
+
+val customers_raw = Source.fromFile("/home/training/data/retail_db/customers/part-00000").getLines.toList;
+
+val customers_rdd = sc.parallelize(customers_raw)
+
+val customers = customers_rdd.map(customer => (customer.split(",")(0).toInt,(customer.split(",")(1),customer.split(",")(2))))
+
+val customers_ord_join = customers.leftOuterJoin(orders)
+
+val inactive_customers =  customers_ord_join.filter(rec => rec._2._2 == None).map(re => re._2).sortByKey();
+
+val inactive_customer_names=inactive_customers.map(x=>x._1._1+"\t"+x._1._2)
+
+val inactive_customer_names=inactive_customers.map(rec => rec._1._1+ ", "+ rec._1._2).saveAsTextFile("/user/training/solutions/soultions00002/Inactive_customers");
+
+Example of join order and order_items and save:
+
+
+scala> var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+orders_rdd: org.apache.spark.rdd.RDD[String] = /user/training/data/retail_db/orders MapPartitionsRDD[67] at textFile at <console>:28
+
+scala> orders_rdd.first
+res23: String = 1,2013-07-25 00:00:00.0,11599,CLOSED                            
+
+scala> var orders=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,(d(1).toString,d(2).toInt,d(3).toString))})
+orders: org.apache.spark.rdd.RDD[(Int, (String, Int, String))] = MapPartitionsRDD[68] at map at <console>:30
+
+scala> var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+order_items_rdd: org.apache.spark.rdd.RDD[String] = /user/training/data/retail_db/order_items MapPartitionsRDD[70] at textFile at <console>:28
+
+scala> order_items_rdd.first
+res24: String = 1,1,957,1,299.98,299.98
+
+scala> var order_items=order_items_rdd.map(x=>{var d=x.split(",");(d(1).toInt,(d(0).toInt,d(2).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat))})
+order_items: org.apache.spark.rdd.RDD[(Int, (Int, Int, Int, Int, Float, Float))] = MapPartitionsRDD[71] at map at <console>:30
+
+scala> var order_joined=orders.join(order_items)
+order_joined: org.apache.spark.rdd.RDD[(Int, ((String, Int, String), (Int, Int, Int, Int, Float, Float)))] = MapPartitionsRDD[74] at join at <console>:36
+
+scala> order_joined.first
+res25: (Int, ((String, Int, String), (Int, Int, Int, Int, Float, Float))) = (39333,((2014-03-25 00:00:00.0,2404,COMPLETE),(98190,1004,1004,1,399.98,399.98)))
+
+
+scala> var final_order=order_joined.map(x=>(x._1+","+x._2._1._1+","+x._2._1._2+","+x._2._1._3.toString+","+x._2._2._1+","+x._2._2._2+","+x._2._2._6))
+final_order: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[75] at map at <console>:38
+
+scala> final_order.first
+res26: String = 39333,2014-03-25 00:00:00.0,2404,COMPLETE,98190,1004,399.98
+
+final_order.saveAsTextFile("/user/training/order_and_order_item_join_details")
+
+
+**********left join using dataframe and save as sequence****
+
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1),d(2).toInt,d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+var order_items_df=order_items_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat)}).toDF("order_item_id","order_item_order_id","order_item_product_id","order_item_quantity","order_item_subtotal","order_item_product_price")
+
+
+
+var order_joined=orders_df.join(order_items_df,orders_df("order_id")===order_items_df("order_item_order_id"))
+
+
+
+sqlContext.sql("select * from order_order_item limit 20").show
+
+var order_joined=orders_df.join(order_items_df,orders_df("order_id")===order_items_df("order_item_order_id"),"left")
+order_joined.regisTempTable("order_order_item")
+
+var order_without_item=sqlContext.sql("select order_id,order_date,order_customer_id,order_status  from order_order_item where order_item_order_id is null limit 20 ")
+
+var order_seq=order_without_item.rdd.map(x=>(x(0).toString,x(1)+"\t"+x(2) ))
+
+order_seq.saveAsSequenceFile("/user/training/seq_order3",Some(classOf[org.apache.hadoop.io.compress.SnappyCodec]))
+
+
+********using dataframe************
+
+
+JOin two dataaset orders and order_items and save as text file
+
+var orders= sc.textFile("/user/training/data/retail_db/orders")
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+var orders=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toString,d(2).toInt,d(3).toString)}).toDF("order_id","Order_date","order_customer_id","order_status")
+
+case class order_items_class(
+order_item_id :Int,
+order_item_order_id :Int,
+order_item_product_id :Int,
+order_item_quantity :Int,
+order_item_subtotal :Float,
+order_item_product_price :Float
+)
+
+var order_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+
+var order_item=order_items_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat)})
+
+var order_items=order_item.map(x=>order_items_class(x._1,x._2,x._3,x._4,x._5,x._6)).toDF
+
+orders.registerTempTable("order")
+
+order_items.registerTempTable("order_item")
+
+
+var sqlResult=sqlContext.sql("select o.order_id,o.order_date,o.order_status,o.order_customer_id,oi.order_item_id,oi.Order_item_subtotal ,oi.order_item_product_price from order o join order_item oi on o.order_id=oi.order_item_order_id  where oi.order_item_product_price <1000")
+
+Left outer Join
+
+var sqlResult=sqlContext.sql("select o.order_id,o.order_date,o.order_status,o.order_customer_id,oi.order_item_id,oi.Order_item_subtotal ,oi.order_item_product_price from order_item oi left outer join  order o  on o.order_id=oi.order_item_order_id  where oi.order_item_order_id is null")
+
+Right outer Join
+var sqlResult=sqlContext.sql("select o.order_id,o.order_date,o.order_status,o.order_customer_id,oi.order_item_id,oi.Order_item_subtotal ,oi.order_item_product_price from order_item oi right outer join  order o  on o.order_id=oi.order_item_order_id  where oi.order_item_order_id is null")
+
+
+
+***set operator
+
+--Intersection
+// Get all the customers who placed orders in 2013 August and 2013 September
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+
+var customers_082013=orders_rdd.filter(x=>x.split(",")(1).contains("2013-08")).map(x=>x.split(",")(2))
+
+var customers_092013=orders_rdd.filter(x=>x.split(",")(1).contains("2013-09")).map(x=>x.split(",")(2))
+
+var customer_08_09_2013=customers_082013.intersection(customers_092013)
+
+customer_08_09_2013.take(10).foreach(println)
+
+--Union
+// Get all unique customers who placed orders in 2013 August or 2013 September
+
+var customer_08_09_2013=customers_082013.union(customers_092013).distinct
+
+customer_08_09_2013.take(10).foreach(println)
+
+
+
+// Get all customers who placed orders in 2013 August but not in 2013 September
+
+
+var customer_08_not_09_2013=customers_082013.map(c=>(c,1)).leftOuterJoin(customers_092013.map(c=>(c,1)))
+var customers_not_in_09=customer_08_not_09_2013.filter(x=>(x._2._2==None)).map(x=>x._1).distinct
+
+
+**********word count***********
+
+var words_rdd=sc.textFile("/user/training/words/words_file.txt")
+
+var words_rdd=sc.textFile("/user/training/words/words_file.txt")
+var words_flat=words_rdd.flatMap(x=>x.split(" "))
+var words_map=words_flat.map(word=>(word,1))
+var word_count=words_map.reduceByKey((a,b)=>a+b)
+var word_count_df=word_count.toDF("word","count")
+
+//save as avro
+
+import com.databricks.spark.avro._
+word_count_df.write.avro("/user/training/word_count_avro")
+
+//save as textfile
+
+word_count_df.rdd.map(x=>(x.mkString("\t"))).saveAsTextFile("/user/training/word_count_txt")
+
+word_count_df.map(x=>( x(0)+"\t"+x(1) )).saveAsTextFile("/user/training/word_count_txt_map")
+ 
+---or save directly
+
+word_count.map(x=>(x._1.toString+"\t"+x._2.toInt)).saveAsTextFile("/user/training/words_countss")
+
+*********change number of partition to reduce task************
+
+sqlContext.setConf("spark.sql.shuffle.partitions", "1")
+
+
+
+
+//Get top 3 crime types based on number of incidents in RESIDENCE area using Location Description
+//Delimiter use regex while splitting split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1), as there are some fields with comma and enclosed using double quotes
+//data is available at /user/training/CRIME_DATA/Crimes.csv
+//Structure of data (ID,Case Number,Date,Block,IUCR,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,FBI Code,X Coordinate,Y Coordinate,Year,Updated On,Latitude,Longitude,Location)
+//File format - text file
+
+
+var crimes_rdd=sc.textFile("/user/training/CRIME_DATA/Crimes.csv")
+var header=crimes_rdd.first
+var crimeDataWithoutHeader=crimes_rdd.filter(crimerec=>crimerec!=header)
+
+var crimeDataWithoutHeaderDF=crimeDataWithoutHeader.map(x=>{var r=x.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);(r(7),r(5))}).toDF("location_description","crime_type")
+
+
+crimeDataWithoutHeaderDF.registerTempTable("CRIME_DATA")
+
+val resultSQL =sqlContext.sql("select crime_type,count(1) as crime_count from crime_data where location_description = 'RESIDENCE' group by crime_type order by crime_count desc limit 3 ")
+
+
+resultSQL.toJSON.repartition(1).saveAsTextFile("/user/training/RESIDENCE_AREA_CRIMINAL_TYPE_DATA_json")
+
+resultSQL.write.json("/user/training/RESIDENCE_AREA_CRIMINAL_TYPE_DATA_json2")
+
+
+
+***********analytical and windowing function********************
+
+var orders_rdd=sc.textFile("/user/training/data/retail_db/orders")
+
+var orders_df=orders_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1),d(2).toInt,d(3))}).toDF("order_id","order_date","order_customer_id","order_status")
+
+orders_df.registerTempTable("orders")
+
+var orders_items_rdd=sc.textFile("/user/training/data/retail_db/order_items")
+
+var order_items_df=order_items_rdd.map(x=>{var d=x.split(",");(d(0).toInt,d(1).toInt,d(2).toInt,d(3).toInt,d(4).toFloat,d(5).toFloat)}).toDF("order_item_id","order_item_order_id","order_item_product_id","order_item_quantity","order_item_subtotal","order_item_product_price")
+
+order_items_df.registerTempTable("order_items")
+
+
+
+//get order_id,order_date,order_status,order_item_subtotal,order_revenue per order,pct_revenue per order,avg revenue per order 
+//for orders having order revenue of more than 1000
+
+
+
+var sqlresult=sqlContext.sql("select * from(select o.order_id,o.order_date,o.order_status,oi.order_item_subtotal, " +
+"round(sum(oi.order_item_subtotal) over (partition by o.order_id),2)order_revenue, " +
+"oi.order_item_subtotal/round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) pct_revenue, "+
+"round(avg(oi.order_item_subtotal) over (partition by o.order_id), 2) avg_revenue from orders o join order_items oi "+
+"on o.order_id = oi.order_item_order_id "+
+"where o.order_status in ('COMPLETE', 'CLOSED')) q "+
+"where order_revenue >= 1000 " +
+"order by order_date, order_revenue desc, pct_revenue")
+
+
+
+
+var sqlresult_analytic =sqlContext.sql("select * from(select o.order_id,o.order_date,o.order_status,oi.order_item_subtotal, " +
+"round(sum(oi.order_item_subtotal) over (partition by o.order_id),2)order_revenue, " +
+"oi.order_item_subtotal/round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) pct_revenue, "+
+"round(avg(oi.order_item_subtotal) over (partition by o.order_id), 2) avg_revenue, "+
+"rank() over (partition by o.order_id order by oi.order_item_subtotal desc) rnk_revenue, "+
+"dense_rank() over (partition by o.order_id order by oi.order_item_subtotal desc) dense_rnk_revenue, "+
+"percent_rank() over (partition by o.order_id order by oi.order_item_subtotal desc) pct_rnk_revenue, "+
+"row_number() over (partition by o.order_id order by oi.order_item_subtotal desc) rn_orderby_revenue, "+
+"row_number() over (partition by o.order_id) rn_revenue "+
+"from orders o join order_items oi "+
+"on o.order_id = oi.order_item_order_id "+
+"where o.order_status in ('COMPLETE', 'CLOSED')) q "+
+"where order_revenue >= 1000 " +
+"order by order_date, order_revenue desc, rnk_revenue")
+
+
+//result can be save in diffrent file format using df.write.fileformat methods
+
+
+
+///substr and replace
+
+val orders=sc.textFile("/user/training/data/retail_db/orders")
+val orderdate=orders.map(order=>order.split(",")(1).substring(0,10).replace("-","/"))
+
+scala> orderdate.distinct.take(5).foreach(println)
+2014/04/01                                                                      
+2014/02/23
+2013/12/21
+2014/03/24
+2014/03/15
+
+
+***********GroupByKey*******************8
+
+val orderitems=sc.textFile("/user/training/data/retail_db/order_items")
+
+val orderItemsMap = orderitems.map(oi => (oi.split(",")(1).toInt, oi.split(",")(4).toFloat))
+
+orderItemsMap.first
+val orderItemsGBK = orderItemsMap.groupByKey
+
+ orderItemsGBK.map(rec => (rec._1, rec._2.toList.sum)).take(10).foreach(println)
+
+*********sortByKey*****************
+
+val products = sc.textFile("/user/training/data/retail_db/products")
+val productmap = products.map(product => (product.split(",")(1),product))
+val sortedproduct = productmap.sortByKey()
+val sortedproduct = productmap.sortByKey(false)
+
+//details of top 10 products)
+
+val products = sc.textFile("/user/training/data/retail_db/products")
+val productmap = products.map(product => (product.split(",")(4),product))
+val sortedproduct = productmap.sortByKey(false)
+sortedproduct.take(5).foreach(println)
+
+********zip transformation**************
+
+scala> val input=sc.parallelize(List("Arnav","Manisha","Sarvesh"))
+input: org.apache.spark.rdd.RDD[String] = ParallelCollectionRDD[31] at parallelize at <console>:27
+
+scala> val lenrdd=input.map(x=>x.length)
+lenrdd: org.apache.spark.rdd.RDD[Int] = MapPartitionsRDD[32] at map at <console>:29
+
+scala> lenrdd.first
+res10: Int = 5
+
+scala> val ziprdd= input.zip(lenrdd)
+ziprdd: org.apache.spark.rdd.RDD[(String, Int)] = ZippedPartitionsRDD2[33] at zip at <console>:31
+
+scala> ziprdd.collect().foreach(println)
+(Arnav,5)                                                                       
+(Manisha,7)
+(Sarvesh,7)
+
+scala> val lenrdd=input.map(x=>x.substring(1,3))
+lenrdd: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[34] at map at <console>:29
+
+scala> val ziprdd= input.zip(lenrdd)
+ziprdd: org.apache.spark.rdd.RDD[(String, String)] = ZippedPartitionsRDD2[35] at zip at <console>:31
+
+scala> ziprdd.collect().foreach(println)
+(Arnav,rn)
+(Manisha,an)
+(Sarvesh,ar)
+
+
+
+
+Transformations: mapValues
+==========================
+-- it maps values only based on an operation
+
+scala> val input = sc.parallelize(List("hello", "world", "welcome", "rajesh", "hello", "world", "welcome"))
+input: org.apache.spark.rdd.RDD[String] = ParallelCollectionRDD[61] at parallelize at <console>:27
+
+scala> input.collect()
+res34: Array[String] = Array(hello, world, welcome, rajesh, hello, world, welcome)
+
+scala> val rdd1 = input.map(x => (x, x.length))
+rdd1: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[62] at map at <console>:29
+
+scala> rdd1.collect()
+res35: Array[(String, Int)] = Array((hello,5), (world,5), (welcome,7), (rajesh,6), (hello,5), (world,5), (welcome,7))
+
+scala> val result = rdd1.mapValues(x => x * 2)
+result: org.apache.spark.rdd.RDD[(String, Int)] = MapPartitionsRDD[63] at mapValues at <console>:31
+
+scala> result.collect()
+res33: Array[(String, Int)] = Array((hello,10), (world,10), (welcome,14), (rajesh,12), (hello,10), (world,10), (welcome,14))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
